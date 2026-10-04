@@ -56,3 +56,17 @@ over TF-IDF+LR, else rules only.
 Indian custom set: ROC-AUC 1.0 but precision 0.54 at the EMSCAD-tuned threshold — shows the domain-shift issue the real data should be used to study.
 **Known issues**: all reported numbers must be regenerated with real EMSCAD. DistilBERT not trained (needs Colab/GPU); loader tested only with a tiny random model.
 Rule boost makes final probabilities slightly less calibrated (ECE reported both ways). Bi-LSTM reproduction is architecture-faithful, not a bit-exact copy of the paper.
+
+## Phase 4 — URL module
+**Built**: `ml/url/{features,impersonation,live_checks,train,analyzer}.py`, `data/company_domains.csv` (52 employers),
+`tests/test_url_module.py` (30 tests, all network calls mocked).
+**Run**: `python -m ml.url.train` (-> `models/url_lgbm/`, `reports/url_results.json`); `URLAnalyzer().analyze(url)`.
+**Design**: 33 lexical features (no network). LightGBM (balanced weights, early stopping on val logloss) + Platt calibration + F1 threshold on val.
+Impersonation via rapidfuzz (leet-normalised lookalikes, brand in domain/subdomain/path) vs company_domains.csv.
+Live checks (WHOIS age, TLS cert, shortener expansion with HEAD only, SSRF guard, 3s timeouts, TTL cache) are **inference-time rules only** and
+become flags (NEW_DOMAIN, SSL_INVALID, URL_SHORTENER); never training features. Pages are never fetched or rendered.
+Probability = calibrated model prob boosted by rule flags (`config.URL_RULE_BOOST`); SHAP top-6 features in `explanation`.
+Malformed/unsupported-scheme input -> `available=False` + `MALFORMED_URL` flag.
+**Metrics (SYNTHETIC URLs — meaningless)**: test F1 1.000 (synthetic URL patterns are trivially separable).
+**Known issues**: needs real PhishTank/malicious_phish data for honest numbers; random (not domain-grouped) split may leak hosts; `brand_in_path` is low severity to avoid flagging job aggregators.
+`brew install libomp zbar` was needed on this Mac for LightGBM and pyzbar.

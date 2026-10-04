@@ -72,7 +72,7 @@ Status: DONE
   comparison vs the base paper (Bi-LSTM F1 0.86, recall 0.83).
 
 ## Phase 4: URL module
-Status: IN PROGRESS
+Status: DONE
 
 - ml/url/features.py: length, counts of . - _ / ? = @ digits, subdomain depth, IP host,
   suspicious TLDs, entropy, shortener detection, keyword hits (login, verify, job, hiring,
@@ -88,7 +88,7 @@ Status: IN PROGRESS
   top features. Mock all network calls in tests.
 
 ## Phase 5: Image & OCR module
-Status: TODO
+Status: IN PROGRESS
 
 - ml/image/preprocess.py: grayscale, denoise, deskew, adaptive threshold, resize.
 - ml/image/ocr.py: EasyOCR (en, optional hi) with Tesseract as an alternative backend;

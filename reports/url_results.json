@@ -1,0 +1,68 @@
+{
+  "synthetic": true,
+  "threshold": 0.5,
+  "best_iteration": 395,
+  "test": {
+    "threshold": 0.5,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "pr_auc": 1.0,
+    "roc_auc": 1.0,
+    "mcc": 1.0,
+    "accuracy": 1.0,
+    "confusion_matrix": [
+      [
+        212,
+        0
+      ],
+      [
+        0,
+        225
+      ]
+    ],
+    "ece": 6.329690848601098e-06
+  },
+  "top_features": [
+    [
+      "entropy",
+      1478
+    ],
+    [
+      "host_entropy",
+      1084
+    ],
+    [
+      "host_len",
+      646
+    ],
+    [
+      "url_len",
+      584
+    ],
+    [
+      "digit_ratio",
+      577
+    ],
+    [
+      "n_digits",
+      539
+    ],
+    [
+      "path_len",
+      417
+    ],
+    [
+      "n_letters",
+      311
+    ],
+    [
+      "longest_token",
+      264
+    ],
+    [
+      "n_slashes",
+      151
+    ]
+  ]
+}

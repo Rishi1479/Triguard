@@ -68,3 +68,21 @@ ECE_BINS: int = 10
 PROB_EPS: float = 1e-6  # clip before logit
 MAX_TEXT_CHARS: int = 20_000  # longer inputs are truncated before modelling
 RULES_ONLY_PRIOR: float = 0.10  # P(scam) before rule boosts when no trained text model exists
+
+# --- URL module --------------------------------------------------------------------
+COMPANY_DOMAINS_FILE: Path = DATA_DIR / "company_domains.csv"
+URL_MODEL_DIR: Path = MODELS_DIR / "url_lgbm"
+MAX_URL_CHARS: int = 2048
+LIVE_TIMEOUT_S: float = 3.0
+LIVE_CACHE_TTL_S: int = 3600
+LOOKALIKE_MIN_SCORE: float = 86.0  # rapidfuzz ratio (0-100) for typosquat detection
+NEW_DOMAIN_DAYS_HIGH: int = 30
+NEW_DOMAIN_DAYS_MEDIUM: int = 180
+URL_RULE_BOOST: dict[str, float] = {"high": 0.40, "medium": 0.12, "low": 0.03}
+LGBM_PARAMS: dict = {
+    "n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31, "min_child_samples": 10,
+    "subsample": 0.8, "subsample_freq": 1, "colsample_bytree": 0.8, "class_weight": "balanced",
+    "random_state": SEED, "verbose": -1,
+}
+LGBM_EARLY_STOP_ROUNDS: int = 30
+SHAP_TOP_K: int = 6
