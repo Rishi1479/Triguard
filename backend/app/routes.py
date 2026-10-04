@@ -7,6 +7,7 @@ import time
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.db import Analysis, Feedback
 from app.errors import ApiError
@@ -51,7 +52,7 @@ def _domain(url: str | None) -> str | None:
 
 
 async def _read_image(upload: UploadFile | str | None, max_bytes: int) -> bytes | None:
-    if not isinstance(upload, UploadFile) or (not upload.filename and not upload.size):  # absent or empty form field
+    if not isinstance(upload, StarletteUploadFile) or (not upload.filename and not upload.size):  # absent or empty form field
         return None
     data = await upload.read(max_bytes + 1)
     if not data:
