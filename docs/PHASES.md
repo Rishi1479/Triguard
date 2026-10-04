@@ -149,7 +149,7 @@ Status: DONE
   responsive layout; Vitest tests for validation and result rendering.
 
 ## Phase 9: Evaluation & ablation
-Status: IN PROGRESS
+Status: DONE
 
 - reports/evaluate_all.py: 5-fold stratified CV (mean ± std) for text and URL; base paper
   comparison (reported Bi-LSTM vs our reproduction vs DistilBERT), noting the base paper's
@@ -162,7 +162,7 @@ Status: IN PROGRESS
   came from SYNTHETIC data.
 
 ## Phase 10: Testing, deployment & docs
-Status: TODO
+Status: IN PROGRESS
 
 - Full test run; add edge cases (empty text, huge text, corrupt image, malformed URL,
   non-English text).

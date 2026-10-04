@@ -147,3 +147,15 @@ class BiLSTMClassifier:
         folder.mkdir(parents=True, exist_ok=True)
         torch.save(self.net.state_dict(), folder / "model.pt")
         (folder / "vocab.json").write_text(json.dumps(self.vocab.token_to_id))
+
+    @classmethod
+    def load(cls, folder: Path) -> "BiLSTMClassifier":
+        """Restore a classifier written by ``save``."""
+        import torch
+
+        obj = cls()
+        obj.vocab = Vocab(json.loads((folder / "vocab.json").read_text()))
+        obj.net = _build_bilstm_module()(len(obj.vocab.token_to_id) + 2)
+        obj.net.load_state_dict(torch.load(folder / "model.pt", map_location="cpu"))
+        obj.net.eval()
+        return obj

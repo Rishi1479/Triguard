@@ -126,3 +126,14 @@ Branding: "TriGuard — Verify before you apply", navy base, green/amber/red ver
 **Run**: `cd frontend && npm install && npm run dev` (backend on :8000; override with `VITE_BACKEND` / `VITE_API_BASE`); `npm test`; `npm run build`.
 **Tests**: 39 Vitest tests (validation, reason parsing, API client incl. timeout/cancel/errors, ResultView rendering + feedback, AnalyzePage gating/validation/submit/error). Build passes; `oxlint` shows 3 non-blocking warnings.
 **Known issues**: no end-to-end browser test (checked one headless-Chrome screenshot only); history is global (no accounts); the About page's stats need the backend running.
+
+## Phase 9 — Evaluation & ablation
+**Built**: `reports/evaluate_all.py` (+ `reports/__init__.py`), `ml/common/plots.py` usage, `BiLSTMClassifier.load`, `tests/test_evaluation.py` (7 tests).
+**Run**: `python -m reports.evaluate_all [--with-bilstm-cv]` -> `reports/RESULTS.md`, `reports/error_analysis.md`, `reports/evaluation.json`, `reports/figures/*.png`
+(reliability_{text,url,fusion_meta}, cm_{text,url,fusion}, pr_{text,url,ablation}). Prerequisites: `ml.text.baselines`, `ml.url.train`, `ml.fusion.train_fuser`, `ml.image.compare_ocr`.
+**Contents of RESULTS.md**: (1) 5-fold CV mean±std for TF-IDF+LR, Bi-LSTM (optional flag) and LightGBM; (2) base-paper comparison with ROC-AUC from probabilities vs from hard labels;
+(3) out-of-fold ablation on the aligned set (text, URL, image, pairs, all three, all three + cross-modal, CV'd meta-classifier) with coverage; (4) EMSCAD -> Indian generalisation;
+(5) OCR CER table; (6) ECE before/after Platt; (7) confusion matrices / PR curves; (8) error analysis (10 examples; padded with labelled near-misses if fewer real errors exist).
+**Results (ALL SYNTHETIC — do not quote)**: CV F1 TF-IDF+LR 0.981±0.010, Bi-LSTM 0.969±0.014, LightGBM 1.000. Ablation F1: text 0.50, URL 0.84, image 0.41, text+URL 0.78, all three 0.78, +cross-modal 0.78, meta 0.99.
+The only qualitative finding worth keeping: ranking quality (PR/ROC-AUC) holds on the Indian set while F1 collapses at the EMSCAD-tuned threshold, i.e. a calibration/threshold shift, which is exactly what real Indian data should be used to study.
+**Known issues**: every number needs regenerating after real EMSCAD / URL / aligned data are added (DistilBERT row stays "pending" until its Colab model is placed in `models/text_distilbert/`). Hard-label AUROC comparison is computed for our models, not for the paper (its predictions are unavailable).
