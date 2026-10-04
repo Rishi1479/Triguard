@@ -133,7 +133,7 @@ Status: DONE
   latency per input combination.
 
 ## Phase 8: Frontend (React + Vite + TS + Tailwind)
-Status: IN PROGRESS
+Status: DONE
 
 - Branding: "TriGuard", tagline "Verify before you apply"; navy base, green/amber/red verdicts;
   clean, trustworthy, mobile-first.
@@ -149,7 +149,7 @@ Status: IN PROGRESS
   responsive layout; Vitest tests for validation and result rendering.
 
 ## Phase 9: Evaluation & ablation
-Status: TODO
+Status: IN PROGRESS
 
 - reports/evaluate_all.py: 5-fold stratified CV (mean ± std) for text and URL; base paper
   comparison (reported Bi-LSTM vs our reproduction vs DistilBERT), noting the base paper's

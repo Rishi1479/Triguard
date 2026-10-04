@@ -117,3 +117,12 @@ sha256 image hash, masked reasons) and `feedback`; a test asserts raw phones/e-m
 (3) A fuser trained on SYNTHETIC aligned data overfit template cross-modal flags (obvious scam -> 50%), so `train_fuser` saves it as `SYNTHETIC_fuser.joblib` and the pipeline keeps the weighted average until real `aligned.csv` exists.
 **Known issues**: rate limiter and history are in-memory/global (single process, no auth) — fine for a demo, not multi-tenant. Models trained on SYNTHETIC data are brittle on out-of-domain text
 (e.g. a short genuine posting still scores high), so live demo behaviour will only be meaningful after training on real EMSCAD. torch is single-threaded, so Bi-LSTM training/DistilBERT CPU inference are slower.
+
+## Phase 8 — Frontend (React + Vite + TS + Tailwind)
+**Built** (`frontend/src`): `api/{types,client}.ts` (typed client, timeouts, cancellation, backend error codes), `lib/{validation,reasons,useAnimatedNumber}.ts`,
+components `Header, InputCards (text / drag-drop image with preview / URL), LoadingSteps, RiskGauge (animated, role=meter), ResultView (verdict badge, "Why?" reasons with severity icons + highlighted evidence,
+cross-modal warning banner, per-modality cards, feedback, safety tips incl. cybercrime.gov.in / 1930, disclaimer)`, pages `Analyze, History, About` (method + usage stats), hash router, Vite dev proxy to the backend.
+Branding: "TriGuard — Verify before you apply", navy base, green/amber/red verdicts (always paired with icon + text), mobile-first, skip link, aria-live progress, reduced-motion support.
+**Run**: `cd frontend && npm install && npm run dev` (backend on :8000; override with `VITE_BACKEND` / `VITE_API_BASE`); `npm test`; `npm run build`.
+**Tests**: 39 Vitest tests (validation, reason parsing, API client incl. timeout/cancel/errors, ResultView rendering + feedback, AnalyzePage gating/validation/submit/error). Build passes; `oxlint` shows 3 non-blocking warnings.
+**Known issues**: no end-to-end browser test (checked one headless-Chrome screenshot only); history is global (no accounts); the About page's stats need the backend running.
