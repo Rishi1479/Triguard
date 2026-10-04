@@ -1,15 +1,77 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Design tokens. Light theme only — the app ships a single white theme.
+
+   Brand chrome is navy; DATA colours come from the validated data-viz palette
+   (see --viz-* below) and are kept separate so chart colour never drifts with
+   a brand tweak. Risk states use the fixed status palette and are ALWAYS
+   paired with an icon + text label — red/green sit at CVD ΔE 4.1, so colour
+   never carries the verdict on its own.
+--------------------------------------------------------------------------- */
 @theme {
   --color-navy-50: #eef3fa;
   --color-navy-100: #d6e2f3;
+  --color-navy-200: #b4c9e8;
   --color-navy-300: #8aa6cf;
+  --color-navy-400: #5b7fb0;
   --color-navy-500: #34568b;
+  --color-navy-600: #1f4273;
   --color-navy-700: #14305c;
   --color-navy-800: #0f2548;
   --color-navy-900: #0a1b36;
   --color-navy-950: #061226;
+
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 0.875rem;
+}
+
+/* Semantic surfaces/ink — light is the default, dark is *selected*, not flipped. */
+:root {
+  color-scheme: light;
+
+  --surface-page: #f4f7fb;
+  --surface-card: #ffffff;
+  --surface-sunken: #eef2f8;
+  --surface-raised: #ffffff;
+  --surface-inverse: #0a1b36;
+
+  --ink-primary: #0b1424;
+  --ink-secondary: #47566e;
+  --ink-muted: #6b7a92;
+  --ink-inverse: #ffffff;
+
+  --line-hairline: #e2e8f0;
+  --line-strong: #c8d3e2;
+
+  --accent: #14305c;
+  --accent-hover: #0f2548;
+  --accent-ink: #ffffff;
+  --focus-ring: #34568b;
+
+  /* Risk status — fixed status palette. Icon + label always. */
+  --risk-safe: #0ca30c;
+  --risk-safe-wash: #e6f6e6;
+  --risk-safe-ink: #065f06;
+  --risk-suspicious: #fab219;
+  --risk-suspicious-wash: #fdf3e0;
+  --risk-suspicious-ink: #7a4f00;
+  --risk-scam: #d03b3b;
+  --risk-scam-wash: #fbe9e9;
+  --risk-scam-ink: #8c1d1d;
+
+  /* Data-viz roles (validated: all checks pass on #ffffff / #0f1b2d). */
+  --viz-surface: #ffffff;
+  --viz-series: #2a78d6;
+  --viz-series-soft: #cde2fb;
+  --viz-pos: #d03b3b;   /* diverging: pushes toward scam */
+  --viz-neg: #2a78d6;   /* diverging: pushes toward genuine */
+  --viz-mid: #f0efec;
+  --viz-grid: #e2e8f0;
+  --viz-axis: #c8d3e2;
+  --viz-ink-muted: #6b7a92;
+  --viz-track: #eef2f8;
 }
 
 html {
@@ -18,8 +80,21 @@ html {
 
 body {
   margin: 0;
-  background: #f4f7fb;
-  color: #0f172a;
+  background: var(--surface-page);
+  color: var(--ink-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One focus treatment everywhere. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 0.375rem;
+}
+
+/* Axis ticks and table columns align; hero numbers stay proportional. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -27,5 +102,12 @@ body {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Texture channel for forced-colors / print: identity must not rest on hue. */
+@media (forced-colors: active) {
+  .risk-chip, .viz-mark {
+    forced-color-adjust: none;
   }
 }

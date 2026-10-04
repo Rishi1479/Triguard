@@ -66,3 +66,43 @@ describe('AnalyzePage', () => {
     expect(analyzeBtn()).toBeEnabled()
   })
 })
+
+describe('AnalyzePage — example chips and input progress', () => {
+  it('offers the demo examples', () => {
+    render(<AnalyzePage />)
+    expect(screen.getByRole('button', { name: /Genuine offer letter/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Fake offer letter/ })).toBeInTheDocument()
+  })
+
+  it('fills the form from an example, including its link', async () => {
+    render(<AnalyzePage />)
+    await userEvent.click(screen.getByRole('button', { name: /Genuine job posting/ }))
+    const textarea = screen.getByRole('textbox', { name: /job or internship text/i }) as HTMLTextAreaElement
+    expect(textarea.value).toContain('Wealth Bank is hiring a Relationship Manager')
+    expect(screen.getByRole('textbox', { name: /application link/i })).toHaveValue(
+      'https://careers.wealthbank.com/apply',
+    )
+  })
+
+  it('enables Analyze once an example is loaded', async () => {
+    render(<AnalyzePage />)
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /Fake offer letter/ }))
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeEnabled()
+  })
+
+  it('tracks which inputs are provided', async () => {
+    render(<AnalyzePage />)
+    expect(screen.getByText('Add at least one.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Genuine job posting/ }))
+    expect(screen.getByText(/More inputs let us cross-check/)).toBeInTheDocument()
+  })
+
+  it('clears the form', async () => {
+    render(<AnalyzePage />)
+    await userEvent.click(screen.getByRole('button', { name: /Fake offer letter/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+    expect(screen.getByRole('textbox', { name: /job or internship text/i })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Analyze' })).toBeDisabled()
+  })
+})

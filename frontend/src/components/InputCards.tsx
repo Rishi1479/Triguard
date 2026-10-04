@@ -2,15 +2,20 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { MAX_TEXT_CHARS } from '../lib/validation'
 import { UploadIcon } from './Icons'
 
-const card = 'rounded-xl border border-slate-200 bg-white p-4 shadow-sm'
-const errorText = 'mt-2 text-sm font-medium text-red-700'
+const card = 'rounded-[var(--radius-card)] border p-4'
+const cardStyle = { borderColor: 'var(--line-hairline)', background: 'var(--surface-card)' }
+const errorText = 'mt-2 text-sm font-medium'
+const errorStyle = { color: 'var(--risk-scam-ink)' }
+const field =
+  'w-full rounded-lg border p-3 text-sm bg-transparent text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none'
+const fieldStyle = { borderColor: 'var(--line-strong)' }
 
 export function TextCard({ value, onChange, error }: { value: string; onChange: (v: string) => void; error: string | null }) {
   const id = useId()
   return (
-    <section className={`${card} lg:col-span-2`}>
-      <label htmlFor={id} className="block text-base font-semibold text-navy-900">1. Job or internship text</label>
-      <p className="mb-2 text-sm text-slate-600">Paste the message, advertisement or offer letter text.</p>
+    <section className={`${card} lg:col-span-2`} style={cardStyle}>
+      <label htmlFor={id} className="block text-base font-semibold text-[var(--ink-primary)]">1. Job or internship text</label>
+      <p className="mb-2 text-sm text-[var(--ink-secondary)]">Paste the message, advertisement or offer letter text.</p>
       <textarea
         id={id}
         value={value}
@@ -19,13 +24,14 @@ export function TextCard({ value, onChange, error }: { value: string; onChange: 
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-err` : undefined}
         placeholder="e.g. Congratulations! You are selected. Pay Rs 2,500 registration fee to confirm your seat…"
-        className="w-full resize-y rounded-lg border border-slate-300 p-3 text-sm focus:border-navy-500 focus:outline-none focus:ring-2 focus:ring-navy-300"
+        className={`${field} resize-y`}
+        style={fieldStyle}
       />
-      <div className="mt-1 flex justify-between text-xs text-slate-500">
+      <div className="mt-1 flex justify-between text-xs text-[var(--ink-muted)]">
         <span>{error ? '' : 'Phone numbers and e-mails are masked before anything is stored.'}</span>
         <span>{value.length.toLocaleString()} / {MAX_TEXT_CHARS.toLocaleString()}</span>
       </div>
-      {error && <p id={`${id}-err`} role="alert" className={errorText}>{error}</p>}
+      {error && <p id={`${id}-err`} role="alert" className={errorText} style={errorStyle}>{error}</p>}
     </section>
   )
 }
@@ -33,9 +39,9 @@ export function TextCard({ value, onChange, error }: { value: string; onChange: 
 export function UrlCard({ value, onChange, error }: { value: string; onChange: (v: string) => void; error: string | null }) {
   const id = useId()
   return (
-    <section className={card}>
-      <label htmlFor={id} className="block text-base font-semibold text-navy-900">3. Application link</label>
-      <p className="mb-2 text-sm text-slate-600">We only look up the address — we never open the page.</p>
+    <section className={card} style={cardStyle}>
+      <label htmlFor={id} className="block text-base font-semibold text-[var(--ink-primary)]">3. Application link</label>
+      <p className="mb-2 text-sm text-[var(--ink-secondary)]">We only look up the address — we never open the page.</p>
       <input
         id={id}
         type="text"
@@ -46,9 +52,10 @@ export function UrlCard({ value, onChange, error }: { value: string; onChange: (
         aria-invalid={Boolean(error)}
         aria-describedby={error ? `${id}-err` : undefined}
         placeholder="https://company-careers.example/apply"
-        className="w-full rounded-lg border border-slate-300 p-3 text-sm focus:border-navy-500 focus:outline-none focus:ring-2 focus:ring-navy-300"
+        className={field}
+        style={fieldStyle}
       />
-      {error && <p id={`${id}-err`} role="alert" className={errorText}>{error}</p>}
+      {error && <p id={`${id}-err`} role="alert" className={errorText} style={errorStyle}>{error}</p>}
     </section>
   )
 }
@@ -74,23 +81,25 @@ export function ImageCard({ file, onChange, error }: { file: File | null; onChan
   }
 
   return (
-    <section className={card}>
-      <h2 className="text-base font-semibold text-navy-900">2. Offer letter or poster image</h2>
-      <p className="mb-2 text-sm text-slate-600">PNG, JPG or WebP, up to 5 MB. Images are never saved.</p>
+    <section className={card} style={cardStyle}>
+      <h2 className="text-base font-semibold text-[var(--ink-primary)]">2. Offer letter or poster image</h2>
+      <p className="mb-2 text-sm text-[var(--ink-secondary)]">PNG, JPG or WebP, up to 5 MB. Images are never saved.</p>
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
         onDragLeave={() => setDragging(false)}
         onDrop={(e) => { e.preventDefault(); setDragging(false); pick(e.dataTransfer.files?.[0]) }}
-        className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
-          dragging ? 'border-navy-500 bg-navy-50' : 'border-slate-300 bg-slate-50'
-        }`}
+        className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-4 text-center transition-colors"
+        style={{
+          borderColor: dragging ? 'var(--accent)' : 'var(--line-strong)',
+          background: dragging ? 'var(--viz-track)' : 'var(--surface-sunken)',
+        }}
       >
         {preview && file ? (
-          <img src={preview} alt={`Preview of ${file.name}`} className="mb-2 max-h-40 rounded border border-slate-200 object-contain" />
+          <img src={preview} alt={`Preview of ${file.name}`} className="mb-2 max-h-40 rounded border object-contain" style={{ borderColor: 'var(--line-hairline)' }} />
         ) : (
-          <UploadIcon className="mb-1 text-slate-400" width={28} height={28} />
+          <UploadIcon className="mb-1" style={{ color: 'var(--ink-muted)' }} width={28} height={28} />
         )}
-        <p className="text-sm text-slate-600">{file ? file.name : 'Drag & drop an image here, or'}</p>
+        <p className="text-sm text-[var(--ink-secondary)]">{file ? file.name : 'Drag & drop an image here, or'}</p>
         <input
           ref={inputRef}
           id={id}
@@ -103,18 +112,20 @@ export function ImageCard({ file, onChange, error }: { file: File | null; onChan
         />
         <div className="mt-2 flex gap-2">
           <button type="button" onClick={() => inputRef.current?.click()}
-            className="rounded-md bg-navy-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-300">
+            className="rounded-md px-3 py-1.5 text-sm font-semibold"
+            style={{ background: 'var(--accent)', color: 'var(--accent-ink)' }}>
             {file ? 'Change image' : 'Choose image'}
           </button>
           {file && (
             <button type="button" onClick={() => { onChange(null); if (inputRef.current) inputRef.current.value = '' }}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-300">
+              className="rounded-md border px-3 py-1.5 text-sm font-medium text-[var(--ink-secondary)]"
+              style={{ borderColor: 'var(--line-strong)' }}>
               Remove
             </button>
           )}
         </div>
       </div>
-      {error && <p id={`${id}-err`} role="alert" className={errorText}>{error}</p>}
+      {error && <p id={`${id}-err`} role="alert" className={errorText} style={errorStyle}>{error}</p>}
     </section>
   )
 }

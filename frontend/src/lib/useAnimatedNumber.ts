@@ -14,7 +14,9 @@ export function useAnimatedNumber(target: number, durationMs = 900): number {
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
-      const t = Math.min((now - start) / durationMs, 1)
+      // Clamp low as well as high: a rAF timestamp can precede the captured start (different
+      // time origins), which would otherwise ease through negative values.
+      const t = Math.min(Math.max((now - start) / durationMs, 0), 1)
       setValue(target * (1 - Math.pow(1 - t, 3)))
       if (t < 1) raf = requestAnimationFrame(tick)
     }

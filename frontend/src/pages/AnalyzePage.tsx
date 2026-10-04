@@ -2,9 +2,44 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { analyze, ApiError } from '../api/client'
 import type { AnalyzeResponse } from '../api/types'
 import { ImageCard, TextCard, UrlCard } from '../components/InputCards'
+import { ImageIcon, LinkIcon, SparkIcon, TextIcon } from '../components/Icons'
 import LoadingSteps, { stepsFor } from '../components/LoadingSteps'
 import ResultView from '../components/ResultView'
+import { Button, Card, ErrorNote } from '../components/ui'
+import { EXAMPLES } from '../lib/examples'
 import { canSubmit, hasInput, validateForm } from '../lib/validation'
+
+/** Which inputs are filled, as a compact checklist so the value of adding more is visible. */
+function InputProgress({ text, image, url }: { text: boolean; image: boolean; url: boolean }) {
+  const items = [
+    { on: text, Icon: TextIcon, label: 'Text' },
+    { on: image, Icon: ImageIcon, label: 'Image' },
+    { on: url, Icon: LinkIcon, label: 'Link' },
+  ]
+  const n = items.filter((i) => i.on).length
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs">
+      {items.map(({ on, Icon, label }) => (
+        <span
+          key={label}
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium"
+          style={{
+            background: on ? 'var(--risk-safe-wash)' : 'var(--surface-sunken)',
+            color: on ? 'var(--risk-safe-ink)' : 'var(--ink-muted)',
+          }}
+        >
+          <Icon width={13} height={13} />
+          {label}
+          <span aria-hidden="true">{on ? '✓' : '—'}</span>
+          <span className="sr-only">{on ? 'provided' : 'not provided'}</span>
+        </span>
+      ))}
+      <span className="text-[var(--ink-muted)]">
+        {n === 0 ? 'Add at least one.' : n < 3 ? 'More inputs let us cross-check.' : 'All three — best accuracy.'}
+      </span>
+    </div>
+  )
+}
 
 export default function AnalyzePage() {
   const [text, setText] = useState('')
@@ -43,32 +78,77 @@ export default function AnalyzePage() {
   const reset = () => { setResult(null); setText(''); setUrl(''); setImage(null); setError(null) }
 
   if (result) {
-    return <div ref={resultRef} tabIndex={-1} className="outline-none" aria-label="Analysis result"><ResultView result={result} onReset={reset} /></div>
+    return (
+      <div ref={resultRef} tabIndex={-1} className="outline-none" aria-label="Analysis result">
+        <ResultView result={result} onReset={reset} />
+      </div>
+    )
   }
 
   return (
-    <form onSubmit={submit} noValidate className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-navy-900">Is this job or internship real?</h1>
-        <p className="mt-1 text-slate-600">Add any combination of text, an image and a link. The more you add, the better we can cross-check.</p>
-      </div>
+    <form onSubmit={submit} noValidate className="space-y-5">
+      <section className="text-center sm:text-left">
+        <h1 className="text-2xl font-bold tracking-tight text-[var(--ink-primary)] sm:text-3xl">
+          Is this job or internship real?
+        </h1>
+        <p className="mx-auto mt-1.5 max-w-2xl text-[var(--ink-secondary)] sm:mx-0">
+          Paste the message, add a screenshot of the offer letter, or drop in the application link.
+          We check all three and explain what we found — we never open the link.
+        </p>
+      </section>
+
       {loading ? (
-        <LoadingSteps steps={stepsFor({ text: Boolean(text.trim()), image: Boolean(image), url: Boolean(url.trim()) })} onCancel={() => abortRef.current?.abort('cancelled')} />
+        <LoadingSteps
+          steps={stepsFor({ text: Boolean(text.trim()), image: Boolean(image), url: Boolean(url.trim()) })}
+          onCancel={() => abortRef.current?.abort('cancelled')}
+        />
       ) : (
         <>
+          <Card className="p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--ink-primary)]">
+                <SparkIcon width={16} height={16} style={{ color: 'var(--accent)' }} />
+                Try an example
+              </span>
+              <span className="text-xs text-[var(--ink-muted)]">
+                The first two are the same job — only the behaviour differs.
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {EXAMPLES.map((ex) => (
+                <button
+                  key={ex.id}
+                  type="button"
+                  onClick={() => { setText(ex.text); setUrl(ex.url ?? ''); setImage(null); setError(null) }}
+                  className="rounded-lg border p-3 text-left transition-colors hover:bg-[var(--surface-sunken)]"
+                  style={{ borderColor: 'var(--line-hairline)' }}
+                >
+                  <span className="block text-sm font-semibold text-[var(--ink-primary)]">{ex.label}</span>
+                  <span className="mt-0.5 block text-xs text-[var(--ink-secondary)]">{ex.blurb}</span>
+                </button>
+              ))}
+            </div>
+          </Card>
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <TextCard value={text} onChange={setText} error={errors.text} />
             <ImageCard file={image} onChange={setImage} error={errors.image} />
-            <UrlCard value={url} onChange={setUrl} error={errors.url} />
+            <div className="lg:col-span-3">
+              <UrlCard value={url} onChange={setUrl} error={errors.url} />
+            </div>
           </div>
-          {error && <p role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm font-medium text-red-800">{error}</p>}
-          <div className="flex items-center gap-3">
-            <button type="submit" disabled={!ready}
-              className="rounded-lg bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500">
-              Analyze
-            </button>
-            {!hasInput(form) && <span className="text-sm text-slate-500">Add at least one input to begin.</span>}
-          </div>
+
+          {error && <ErrorNote>{error}</ErrorNote>}
+
+          <Card className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <InputProgress text={Boolean(text.trim())} image={Boolean(image)} url={Boolean(url.trim())} />
+            <div className="flex items-center gap-2">
+              {hasInput(form) && (
+                <Button type="button" variant="ghost" size="md" onClick={reset}>Clear</Button>
+              )}
+              <Button type="submit" size="lg" disabled={!ready}>Analyze</Button>
+            </div>
+          </Card>
         </>
       )}
     </form>

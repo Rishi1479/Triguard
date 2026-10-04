@@ -72,6 +72,9 @@ def should_abstain(prob: float, results: list[ModalityResult], cross_flags: list
         return False
     if any(f.severity == "high" for f in cross_flags):
         return False
+    # An input unlike anything in training has no model evidence behind its score.
+    if any(r.extracted.get("out_of_distribution") for r in results if r.available):
+        return True
     if evidence_strength(results) < config.MIN_EVIDENCE_FOR_VERDICT:
         return True
     lo, hi = config.ABSTAIN_BAND

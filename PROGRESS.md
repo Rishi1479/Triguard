@@ -314,3 +314,238 @@ returns CI rows), `test_backend.py` (`/health` may report any model in `TEXT_MOD
   what ships in the artifact.
 - Transformer artifacts (`text_muril`, `text_xlmr`) are still Colab work — the notebooks currently
   only cover DistilBERT.
+
+## Fix: genuine offer letters scored as scams (2026-10-04)
+
+**Reported bug.** A real, clean offer letter ("We are pleased to offer you the Relationship Manager
+position at Wealth Bank … annual compensation USD 72,000") was scored **P(scam) = 0.715** by the
+hybrid model and **0.998** by TF-IDF+LR. Zero red flags fired, so this was entirely the trained model.
+
+**Root cause — a label confound, not a tuning problem.** Offer/selection wording existed *only* in
+the scam class of every training set:
+
+| contains | genuine | scam |
+|---|---|---|
+| "offer letter" (Indian set) | **0** | 12 |
+| "selected" | **0** | 12 |
+| "congratulations" | **0** | 22 |
+| offer-letter phrasing (EMSCAD-shaped set) | **0** | 0 |
+
+Every offer/selection document in the data was labelled scam, so the models learned
+`offer letter ⇒ scam` and were classifying **document type, not legitimacy**. Proof: the same job,
+company and salary written as a *job posting* scored 0.040 while written as an *offer letter* it
+scored 0.998 — and LIME's top drivers on the offer letter were function words ("In", "Your", "We")
+at weights of ±0.02, i.e. no real evidence at all.
+
+This mattered more than the synthetic-data problem because (a) EMSCAD is job-postings-only too, so
+real data would **not** have fixed it, and (b) the product's flagship input is an offer-letter image,
+which OCRs straight into this model.
+
+### Fix 1 — balance the register across both classes (`ml/common/synthetic.py`)
+Offer-letter register now appears in *both* classes, so it carries no label information and only
+*behaviour* (a fee, an identity-document demand, a free-mail recruiter, no interview) separates them:
+- `G_OFFER` + `GENUINE_OFFER_SHARE` (0.18) — genuine offer/appointment letters with manager, CTC,
+  start date, background-check and signature clauses.
+- `S_OFFER` + `SCAM_OFFER_SHARE` (0.35) — fake offer letters that mimic the genuine register closely
+  and differ only in the behavioural cues.
+- Four genuine offer letters added to `_CUSTOM_GENUINE` for the Indian set.
+- `_fill()` gained `{co} {dom} {date} {mgr} {mgr_title} {ctc}` placeholders.
+
+Balance after the fix (EMSCAD-shaped, genuine / scam): "pleased to offer" 365/115,
+"offer letter" 241/94, "selected" 148/42, "congratulations" 141/115.
+
+> A first attempt only added *genuine* offer letters, which simply flipped the confound
+> (385/0 the other way). Both classes are needed — that is the actual invariant, and it is now
+> pinned by tests.
+
+### Fix 2 — out-of-distribution guard (`ml/common/novelty.py`, new)
+Rebalancing fixes this confound; the general failure (a confident score on a register never seen)
+stays. `NoveltyDetector` measures the **share of out-of-vocabulary word tokens**, and
+`shrink_toward_prior()` pulls the score back toward the prior in proportion to how far past the
+cut-off it sits; `TextAnalyzer` marks `extracted["out_of_distribution"]` and the fuser abstains on it.
+
+The cut-off is an **absolute** 0.35, deliberately not a percentile of the training distribution: a
+templated corpus has a 99th-percentile OOV share of ~0.015, so a self-calibrated threshold flags
+nearly every real input. Measured separation: real job content 0.08–0.15, cooking recipe 0.68,
+Hinglish SMS 0.56, German 0.92.
+
+> A first implementation used cosine distance in a TruncatedSVD space. It was discarded: it flagged
+> an ordinary job posting as novel (0.34) while *missing* a cooking recipe (0.21), because the
+> leading components were dominated by function words. The OOV share is simpler, interpretable and
+> separates cleanly.
+
+### Result
+| Input | before | after |
+|---|---|---|
+| Genuine offer letter (the reported case) | 0.715 / 0.998 | **0.022** → verdict **Safe, risk 2.2** |
+| Fake offer letter (same company/role) | — | 0.899 → **Likely Scam, risk 97.2** |
+| Genuine job posting | 0.040 | Safe, risk 13.4 |
+| Cooking recipe | confident score | **abstains** (novelty 0.68) |
+| German offer letter | confident score | **abstains** (novelty 0.94) |
+
+### Files
+New: `ml/common/novelty.py`, `tests/test_novelty.py`, `tests/test_offer_letter_confound.py`.
+Changed: `ml/common/{synthetic,config}.py`, `ml/text/{analyzer,baselines}.py`, `ml/fusion/fuser.py`.
+
+### How to run
+```bash
+cd backend
+python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom   # regenerate balanced data
+python -m ml.text.baselines        # retrains models + fits models/text_novelty/
+python -m ml.fusion.train_fuser && python -m reports.robustness
+python -m ml.text.evaluate && python -m reports.evaluate_all
+```
+
+**Tests**: backend 346 passed (33 new: 19 novelty, 14 offer-letter confound). The confound tests
+assert the *data property* ("neither class may own the offer-letter register"), so regenerating the
+corpus cannot silently reintroduce the bug.
+
+### Known issues
+- Target-transfer MCC moved with the rebalanced data (tfidf_lr naive 0.164 → adapted 0.721;
+  hybrid 0.000 → 1.000; bilstm 0.236 → 0.557). Still synthetic, so treat the direction, not the value.
+- The novelty vocabulary is only 429 words because the synthetic corpus is templated. On real
+  EMSCAD it will be tens of thousands and the margin between real job content and true OOD widens;
+  `NOVELTY_THRESHOLD` should be re-checked once real data lands.
+- **The same confound audit has not been done for the other classes of input.** Worth checking
+  before the viva whether any other register (resume, internship certificate, poster) is
+  single-class in the data. `tests/test_offer_letter_confound.py` is the template for that check.
+- The image path inherits this fix automatically (OCR text feeds `TextAnalyzer`), but
+  `ml/image/synth_letters.py` still renders scam and genuine letters from label-branched templates,
+  so the *visual* channel retains the circularity noted in the previous entry.
+
+## URL detector: placeholder domains & employer recognition (2026-10-04)
+
+### Why
+Reviewing the URL modality against the signals it ought to cover showed two gaps. Reserved
+placeholder addresses (`.example`, `.test`, `.invalid`, `.localhost`) were almost invisible:
+`http://hiring-portal.example/apply` scored 0.127 with a single low `NO_HTTPS` flag, because
+`tldextract` returns an empty public suffix for these names, so the `suspicious_tld` feature —
+the one check that should have caught them — evaluated to False. Separately, there was no signal
+at all for "this domain belongs to no employer we can recognise": `COMPANY_URL_MISMATCH` only
+fires when the text or image names a company that is already in `company_domains.csv`, so a
+standalone link to an unknown domain produced nothing.
+
+### What was built
+- `is_reserved_domain(host)` in `ml/url/features.py` (RFC 2606 / RFC 6761 names, plus the reserved
+  `example.com|net|org`) → **`PLACEHOLDER_DOMAIN`** (high). A link that cannot resolve to any real
+  site is either a template left unfilled or a fabricated address.
+- `official_domains()` in `ml/url/impersonation.py`: the set of every registered domain in
+  `company_domains.csv`, cached.
+- `recognition_flags()` in `ml/url/analyzer.py` → **`UNRECOGNIZED_EMPLOYER_DOMAIN`** (low). Kept low
+  on purpose: most legitimate small employers are not in the CSV either, so this is corroborating
+  evidence, not a verdict. It is suppressed when a more specific flag already explains the host
+  (impersonation, placeholder, raw IP, shortener, form/chat link, ATS/job board, official domain)
+  and when WHOIS shows the domain is at least `ESTABLISHED_DOMAIN_DAYS` (730) old — without that
+  gate it would fire on nearly every result and become noise.
+- Plain-English entries for both codes in `frontend/src/lib/flagHelp.ts` (what / why / action).
+- `features._is_ip` renamed to the public `features.is_ip`, since the analyzer now needs it.
+
+Both are **rule signals only**; `FEATURE_NAMES` is unchanged, so saved models stay loadable and no
+retraining is needed. A reserved TLD would be an all-zero column in training anyway — no real-world
+URL corpus contains one.
+
+### Files
+Changed: `ml/url/{features,impersonation,analyzer}.py`, `ml/common/config.py`
+(+`ESTABLISHED_DOMAIN_DAYS`), `tests/test_url_module.py`, `frontend/src/lib/flagHelp.ts`.
+
+### Effect
+`http://hiring-portal.example/apply` 0.127 → 0.476 (high flag).
+`https://randomcorp-hr-team.online/apply?id=22` 0.127 → 0.153 (the low note).
+`https://www.tcs.com/careers`, `bit.ly`, `forms.gle` and IP hosts are unchanged — no new flag fires
+where one already applied.
+
+### How to run
+```bash
+cd backend && .venv/bin/python -m pytest tests/test_url_module.py -q
+cd frontend && npx tsc --noEmit && npm test -- --run
+```
+
+**Tests**: backend 358 passed (12 new: reserved-domain parametrisation, placeholder severity,
+employer recognition, the suppression matrix, CSV coverage). Frontend 49 passed, clean typecheck.
+
+### Known issues
+- `UNRECOGNIZED_EMPLOYER_DOMAIN` is only as good as `company_domains.csv`. A real employer outside
+  that list gets the note; that is why it is low severity and why the message says "could not be
+  matched" rather than asserting the domain is fake.
+- Employer recognition is still list-based. Nothing checks whether a domain *behaves* like a company
+  site (MX records, age + traffic, certificate organisation name). The TLS certificate's
+  `organizationName` is already fetched into `LiveSignals.ssl_issuer` and would be the cheapest next
+  signal — comparing it to the named company needs no extra lookup.
+- Redirect following is still limited to the ~15 known shorteners (HEAD only, 3 hops). A redirect
+  chain on an arbitrary domain is never followed, by design: the project rule is never to open a
+  suspicious URL.
+
+## Frontend redesign (2026-10-04)
+
+Full visual rebuild of the React app. Backend untouched. Light theme only, and the
+"How it works" page was dropped on request.
+
+### Design foundation
+- `src/index.css` is now a token system: surfaces, ink, lines, accent, risk status and a separate
+  `--viz-*` group for chart colour, so data colour never drifts with a brand tweak.
+- `src/components/ui.tsx` — shared primitives (`Card`, `Button`, `SectionTitle`, `Chip`, `StatTile`,
+  `Accordion`, `Skeleton`, `EmptyState`, `ErrorNote`), replacing inline
+  `rounded-xl border border-slate-200 bg-white p-4 shadow-sm` repeated across pages.
+- `src/lib/riskTokens.ts` — risk/severity tone maps + `LABEL_SUMMARY`, kept out of component files.
+
+### Charts — inline SVG, no chart library
+`src/components/charts.tsx`: `RiskBandMeter`, `ModalityBars`, `DivergingWords`, `LabelDistribution`,
+`CountBars`, `DataTable`. Five simple forms did not justify a dependency; the app still ships with
+only `react` + `react-dom`.
+
+Colour was **validated, not eyeballed** (`validate_palette.js`): the diverging pair
+blue `#2a78d6` ↔ red `#d03b3b` passes all six checks on the `#ffffff` surface. Rules held:
+- one hue for every bar of a single measure — never a value-ramp on nominal categories;
+- status colours only where they mean status, and **always with an icon + the verdict name**:
+  status red↔green sit at CVD ΔE 4.1, so colour alone could not distinguish them;
+- diverging pair with a neutral gray midpoint, solid hairline rules (never dashed);
+- 2px surface gaps between fills, 4px rounded data-ends anchored to the baseline;
+- selective direct labels (≤3 series are each labelled), and a table view for every chart.
+
+### Pages
+- **Analyze** — hero, "Try an example" chips, input-progress checklist, clearer disabled state.
+  The examples are the confound pair from the previous entry: *Genuine offer letter* and
+  *Fake offer letter* are the same company, role and salary and differ only in behaviour, so the
+  demo shows the model judging behaviour rather than document type.
+- **Result** — verdict hero (gauge + badge + summary) beside a **band meter that shows where the
+  decision thresholds are**, which a bare gauge cannot; per-input bar chart with a table toggle;
+  key facts (domain, domain age) inline; a new **Confidence & coverage** panel surfacing
+  `abstained`, inputs used and the novelty/out-of-distribution signal; LIME words as a diverging
+  chart.
+- **History** — verdict filter chips with counts, search over text/domain/reason, input-type icons,
+  relative timestamps.
+- **Stats** — NEW. Wires up `getStats()`, which existed in `api/client.ts` but no page ever called.
+  KPI tiles, verdict distribution, input combinations, plus a note that these are usage counts and
+  not model accuracy.
+
+### Bugs found and fixed while rendering the pages
+Screenshots were taken with headless Chrome at several widths rather than trusting the markup:
+- `InputCards.tsx`, `ReasonDetails.tsx` and `LoadingSteps.tsx` still hardcoded `bg-white` /
+  `slate-*`; the "Why?" reasons were dark-on-white and unreadable. All three are tokenised now, and
+  no hardcoded light colour remains in any component.
+- `useAnimatedNumber` could return **negative** values: `t` was capped at 1 but never floored at 0,
+  so a rAF timestamp preceding the captured `performance.now()` start eased through negatives and
+  the gauge rendered "-3%". Now clamped both ways, with a regression test.
+- `RiskGauge` painted a stray dot at zero progress (a rounded cap on a zero-length dash).
+- The Analyze grid left the link card stranded in a one-third column; it now spans the row.
+- A disabled "Analyze" button still read as the call to action.
+- The Stats latency tile said "Median response" while the backend returns a mean.
+
+Checked at 390px in a real 390px-wide iframe: no horizontal overflow (an apparent overflow in
+`--window-size=390` screenshots is a headless artifact — macOS enforces a minimum window width).
+
+**Tests**: frontend 82 passed (`charts.test.tsx` 17 new, `StatsPage.test.tsx` 7 new,
+`useAnimatedNumber.test.ts` 3 new, plus example-chip and provisional-verdict cases). `tsc` clean,
+`vite build` clean, oxlint clean apart from the pre-existing fast-refresh warnings. Backend: 358,
+unchanged by this work.
+
+### Known gaps
+- **Light theme only** — the dark palette was built and validated against a `#0f1b2d` surface, then
+  removed on request. Restoring it means re-adding the two dark scopes in `index.css`; the
+  `--viz-*` dark steps are recorded in this entry's git history.
+- **The "How it works" page is gone**, and with it the pipeline diagram and the written
+  limitations/privacy section. The synthetic-data caveat survives on the Stats page and the
+  disclaimer survives on the Result page, but the fuller honest-limitations text no longer has a
+  home in the UI — worth relocating before the viva.
+- Charts have hover/focus affordances but no floating tooltip; with ≤8 marks every value is
+  direct-labelled or in the table view instead.

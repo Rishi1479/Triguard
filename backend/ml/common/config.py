@@ -97,6 +97,18 @@ MIN_TARGET_CALIBRATION_ROWS: int = 40  # fewer labelled target rows -> prior cor
 TARGET_CALIBRATION_HOLDOUT: float = 0.5  # share of the target sample kept out of recalibration
 EMSCAD_SCAM_PRIOR: float = 0.0484  # EMSCAD fraudulent share, used as the source prior default
 
+# --- Novelty / out-of-distribution guard -------------------------------------------
+# A model asked about a register absent from training still returns a confident number. When an
+# input sits far from the training manifold its score is shrunk back toward the prior and the
+# verdict abstains, rather than presenting a guess as evidence.
+NOVELTY_MIN_TRAIN_ROWS: int = 100  # below this the detector stays disabled
+NOVELTY_MIN_DOC_FREQ: int = 2  # a word counts as "seen" from this many training documents
+# Absolute cut-off on the out-of-vocabulary token share, NOT a percentile of the training
+# distribution: a templated corpus sits at ~0.015, which would flag nearly every real input.
+# Measured separation: real job content 0.08-0.15, recipe 0.68, Hinglish SMS 0.56, German 0.92.
+NOVELTY_THRESHOLD: float = 0.35
+NOVELTY_DIR_SUFFIX: str = "text_novelty"
+
 # --- URL module --------------------------------------------------------------------
 COMPANY_DOMAINS_FILE: Path = DATA_DIR / "company_domains.csv"
 URL_MODEL_DIR: Path = MODELS_DIR / "url_lgbm"
@@ -104,6 +116,9 @@ MAX_URL_CHARS: int = 2048
 LIVE_TIMEOUT_S: float = 3.0
 LIVE_CACHE_TTL_S: int = 3600
 LOOKALIKE_MIN_SCORE: float = 86.0  # rapidfuzz ratio (0-100) for typosquat detection
+# A domain older than this is treated as established, so "we cannot recognise this employer" is not
+# worth reporting for it; below it (or when WHOIS gives no age) an unknown domain is worth a note.
+ESTABLISHED_DOMAIN_DAYS: int = 730
 NEW_DOMAIN_DAYS_HIGH: int = 30
 NEW_DOMAIN_DAYS_MEDIUM: int = 180
 URL_RULE_BOOST: dict[str, float] = {"high": 0.40, "medium": 0.12, "low": 0.03}

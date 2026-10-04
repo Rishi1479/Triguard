@@ -16,6 +16,7 @@ from ml.common import config
 from ml.common.bootstrap import bootstrap_metrics
 from ml.common.calibration import PlattCalibrator
 from ml.common.metrics import evaluate, expected_calibration_error, find_best_threshold
+from ml.common.novelty import NoveltyDetector
 from ml.common.prior_shift import calibration_holdout, fit_transfer
 from ml.text.models import BiLSTMClassifier, TfidfLR, TfidfRulesLGBM
 
@@ -86,6 +87,14 @@ def run(models_dir: Path = config.MODELS_DIR, reports_dir: Path = config.REPORTS
     splits = load_splits()
     train = splits["train"]
     results: dict = {"synthetic": (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()}
+
+    # Novelty guard, fit on the training split only. Lets the analyzer shrink scores toward the
+    # prior on registers it has no training evidence for, instead of guessing confidently.
+    nov = NoveltyDetector().fit(train["text"].tolist())
+    if nov.enabled:
+        nov.save(models_dir / config.NOVELTY_DIR_SUFFIX)
+        results["novelty"] = {"threshold": nov.threshold, "vocab_size": len(nov.vocab),
+                              "n_train": nov.n_train}
 
     t0 = time.time()
     lr = TfidfLR().fit(train["text"].tolist(), train["label"])

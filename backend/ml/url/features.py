@@ -16,6 +16,11 @@ _TLD = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
 
 SUSPICIOUS_TLDS = frozenset({"xyz", "top", "online", "site", "click", "work", "tk", "ml", "ga", "cf", "gq", "info",
                              "biz", "link", "icu", "buzz", "live", "rest", "fit", "monster", "cyou", "support"})
+# RFC 2606 / RFC 6761 reserved names: they can never resolve to a real employer's website, so a
+# posting that links to one is using a placeholder or a fabricated address. Rules-only (a trained
+# model cannot learn from them: no real-world URL corpus contains them).
+RESERVED_TLDS = frozenset({"example", "test", "invalid", "localhost", "local", "internal", "lan", "home", "corp"})
+RESERVED_DOMAINS = frozenset({"example.com", "example.net", "example.org"})
 SHORTENERS = frozenset({"bit.ly", "tinyurl.com", "goo.gl", "t.co", "rb.gy", "cutt.ly", "is.gd", "ow.ly", "shorturl.at",
                         "tiny.cc", "buff.ly", "rebrand.ly", "bl.ink", "s.id", "lnkd.in"})
 PLATFORM_LINKS = ("forms.gle", "docs.google.com/forms", "t.me", "wa.me", "api.whatsapp.com", "chat.whatsapp.com",
@@ -42,7 +47,7 @@ def parse_host(url: str) -> tuple[str, str]:
         url = "http://" + url
     parts = urlsplit(url)
     host = (parts.hostname or "").lower()
-    if not host or " " in host or ("." not in host and not _is_ip(host)):
+    if not host or " " in host or ("." not in host and not is_ip(host)):
         raise ValueError(f"no valid host in URL: {url[:60]!r}")
     return host, parts.path + (("?" + parts.query) if parts.query else "")
 
@@ -55,7 +60,8 @@ def entropy(s: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in Counter(s).values())
 
 
-def _is_ip(host: str) -> bool:
+def is_ip(host: str) -> bool:
+    """True if ``host`` is a bare IPv4/IPv6 address rather than a domain name."""
     try:
         ipaddress.ip_address(host.strip("[]"))
         return True
@@ -65,10 +71,17 @@ def _is_ip(host: str) -> bool:
 
 def registered_domain(host: str) -> str:
     """eTLD+1 of ``host`` (e.g. careers.google.com -> google.com); IPs/odd hosts returned as-is."""
-    if _is_ip(host):
+    if is_ip(host):
         return host
     ext = _TLD(host)
     return ".".join(p for p in (ext.domain, ext.suffix) if p) or host
+
+
+def is_reserved_domain(host: str) -> bool:
+    """True if ``host`` sits under a reserved/placeholder name (``.example``, ``.test``, ``example.com``...)."""
+    if is_ip(host):
+        return False
+    return host.rsplit(".", 1)[-1] in RESERVED_TLDS or registered_domain(host) in RESERVED_DOMAINS
 
 
 def extract_features(url: str) -> dict[str, float]:
@@ -77,7 +90,7 @@ def extract_features(url: str) -> dict[str, float]:
     raw = url.strip()[: config.MAX_URL_CHARS]
     low = raw.lower()
     path, _, query = rest.partition("?")
-    ext = _TLD(host) if not _is_ip(host) else None
+    ext = _TLD(host) if not is_ip(host) else None
     sub = ext.subdomain if ext else ""
     f: dict[str, float] = {
         "url_len": len(raw), "host_len": len(host), "path_len": len(path), "query_len": len(query),
@@ -87,7 +100,7 @@ def extract_features(url: str) -> dict[str, float]:
     digits = sum(c.isdigit() for c in raw)
     f.update(
         n_digits=digits, digit_ratio=digits / max(len(raw), 1), n_letters=sum(c.isalpha() for c in raw),
-        subdomain_depth=len([s for s in sub.split(".") if s]), is_ip_host=float(_is_ip(host)),
+        subdomain_depth=len([s for s in sub.split(".") if s]), is_ip_host=float(is_ip(host)),
         suspicious_tld=float(bool(ext) and ext.suffix.split(".")[-1] in SUSPICIOUS_TLDS),
         tld_len=len(ext.suffix) if ext else 0, entropy=entropy(raw), host_entropy=entropy(host),
         is_shortener=float(registered_domain(host) in SHORTENERS),

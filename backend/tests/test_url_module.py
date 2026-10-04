@@ -4,9 +4,10 @@ import pytest
 from ml.common import config
 from ml.common.calibration import PlattCalibrator
 from ml.url import live_checks
-from ml.url.analyzer import URLAnalyzer, boost, live_flags
-from ml.url.features import FEATURE_NAMES, entropy, extract_features, features_matrix, parse_host, registered_domain
-from ml.url.impersonation import check_impersonation
+from ml.url.analyzer import URLAnalyzer, boost, live_flags, recognition_flags
+from ml.url.features import (FEATURE_NAMES, entropy, extract_features, features_matrix, is_reserved_domain,
+                             parse_host, registered_domain)
+from ml.url.impersonation import check_impersonation, official_domains
 from ml.url.live_checks import LiveChecker, LiveSignals
 
 
@@ -132,6 +133,49 @@ def test_shortener_expansion_is_analysed(url_models):
     codes = {f.code for f in r.red_flags}
     assert {"URL_SHORTENER", "BRAND_IMPERSONATION"} <= codes
     assert r.extracted["expanded_url"] == "http://tcs-hiring.online/apply"
+
+
+@pytest.mark.parametrize("host,reserved", [
+    ("hiring-portal.example", True), ("jobs.test", True), ("a.b.invalid", True), ("foo.localhost", True),
+    ("careers.example.com", True), ("exampleware.com", False), ("www.tcs.com", False), ("192.168.0.5", False),
+])
+def test_is_reserved_domain(host, reserved):
+    assert is_reserved_domain(host) is reserved
+
+
+def test_placeholder_domain_flagged_high(url_models):
+    r = URLAnalyzer(models_dir=url_models, enable_live=False).analyze("http://hiring-portal.example/apply")
+    hit = next(f for f in r.red_flags if f.code == "PLACEHOLDER_DOMAIN")
+    assert hit.severity == "high" and r.probability > config.URL_RULE_BOOST["high"]
+    # a real .com careers site must not pick the flag up
+    assert "PLACEHOLDER_DOMAIN" not in {
+        f.code for f in URLAnalyzer(models_dir=url_models, enable_live=False).analyze("https://www.tcs.com/careers").red_flags}
+
+
+def test_unrecognized_employer_domain(url_models):
+    an = URLAnalyzer(models_dir=url_models, enable_live=False)
+    unknown = an.analyze("https://randomcorp-hr-team.net/apply")
+    assert {f.code: f.severity for f in unknown.red_flags}["UNRECOGNIZED_EMPLOYER_DOMAIN"] == "low"
+    assert unknown.extracted["known_employer_domain"] is False
+    for known in ("https://www.tcs.com/careers", "https://jobs.lever.co/acme/123"):
+        r = an.analyze(known)
+        assert "UNRECOGNIZED_EMPLOYER_DOMAIN" not in {f.code for f in r.red_flags}
+        assert r.extracted["known_employer_domain"] is True
+
+
+def test_recognition_flag_is_suppressed_when_a_stronger_flag_applies():
+    """No "unrecognised employer" note where a more specific flag already explains the domain."""
+    none = LiveSignals()
+    assert recognition_flags("tcs-hiring.online", check_impersonation("http://tcs-hiring.online"), none) == []
+    for domain in ("example", "bit.ly", "forms.gle", "192.168.0.5", "lever.co", "tcs.com"):
+        assert recognition_flags(domain, None, none) == [], domain
+    assert recognition_flags("acme-widgets.net", None, LiveSignals(domain_age_days=config.ESTABLISHED_DOMAIN_DAYS)) == []
+    assert recognition_flags("acme-widgets.net", None, LiveSignals(domain_age_days=10))[0].severity == "low"
+
+
+def test_official_domains_covers_csv():
+    doms = official_domains()
+    assert {"tcs.com", "google.com", "infosys.com"} <= doms and "tcs-hiring.online" not in doms
 
 
 def test_boost():

@@ -20,18 +20,31 @@ export default function LoadingSteps({ steps, onCancel }: { steps: string[]; onC
     return () => clearInterval(t)
   }, [steps.length])
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm" role="status" aria-live="polite">
-      <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-navy-100 border-t-navy-700" aria-hidden="true" />
-      <p className="font-medium text-navy-900">{steps[i]}</p>
-      <ol className="mx-auto mt-3 max-w-md space-y-1 text-left text-sm text-slate-500">
+    <div
+      className="rounded-[var(--radius-card)] border p-6 text-center"
+      style={{ borderColor: 'var(--line-hairline)', background: 'var(--surface-card)' }}
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4"
+        style={{ borderColor: 'var(--line-hairline)', borderTopColor: 'var(--accent)' }}
+        aria-hidden="true"
+      />
+      <p className="font-semibold text-[var(--ink-primary)]">{steps[i]}</p>
+      <ol className="mx-auto mt-3 max-w-md space-y-1 text-left text-sm text-[var(--ink-muted)]">
         {steps.map((s, idx) => (
-          <li key={s} className={idx < i ? 'text-emerald-700' : idx === i ? 'font-medium text-navy-900' : ''}>
+          <li
+            key={s}
+            className={idx === i ? 'font-semibold text-[var(--ink-primary)]' : ''}
+            style={idx < i ? { color: 'var(--risk-safe-ink)' } : undefined}
+          >
             {idx < i ? '✓ ' : idx === i ? '• ' : '○ '}
             {s}
           </li>
         ))}
       </ol>
-      <button type="button" onClick={onCancel} className="mt-4 text-sm text-slate-600 underline hover:text-slate-900">Cancel</button>
+      <button type="button" onClick={onCancel} className="mt-4 text-sm text-[var(--ink-secondary)] underline">Cancel</button>
     </div>
   )
 }

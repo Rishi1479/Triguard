@@ -40,6 +40,12 @@ def load_companies(path: Path | None = None) -> tuple[tuple[str, tuple[str, ...]
     return tuple(out)
 
 
+@lru_cache(maxsize=4)
+def official_domains(path: Path | None = None) -> frozenset[str]:
+    """Every registered domain listed in company_domains.csv (the set of employers we can recognise)."""
+    return frozenset(d for _company, domains, _brands in load_companies(path) for d in domains)
+
+
 def _label(domain: str) -> str:
     return domain.split(".")[0]
 

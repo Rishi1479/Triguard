@@ -95,6 +95,18 @@ const BY_CODE: Record<string, FlagHelp> = {
     why: 'This can be a normal job-board page about the company, so it is a minor signal.',
     action: 'Check who owns the site and whether the opening also exists on the company’s own website.',
   },
+  PLACEHOLDER_DOMAIN: {
+    title: 'Link uses a placeholder address',
+    what: 'The domain ends in a reserved name such as .example, .test, .invalid or .localhost, which is set aside for documentation and testing and can never belong to a real website.',
+    why: 'A genuine employer links to a domain that actually exists. A reserved address means the link was copied from a template, invented, or deliberately left unusable.',
+    action: 'Treat the posting as unverified. Ask the recruiter for the opening on the company’s real careers site.',
+  },
+  UNRECOGNIZED_EMPLOYER_DOMAIN: {
+    title: 'Employer domain could not be recognised',
+    what: 'The domain does not match any official company site we know of, nor a recognised job platform such as LinkedIn, Naukri or Greenhouse.',
+    why: 'Many small and new employers are simply not in our list, so this on its own is a weak signal. It matters when it appears together with other warnings.',
+    action: 'Search for the company independently and check the opening is listed on the site you find that way.',
+  },
   IP_ADDRESS_HOST: {
     title: 'Link points to a numeric address',
     what: 'The link uses an IP address (like 192.0.2.10) instead of a company domain name.',

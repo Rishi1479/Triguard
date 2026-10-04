@@ -10,6 +10,7 @@ import numpy as np
 
 from ml.common import config
 from ml.common.calibration import PlattCalibrator
+from ml.common.novelty import NoveltyDetector, shrink_toward_prior
 from ml.common.red_flags import detect_red_flags, extract_entities
 from ml.common.schemas import ModalityResult, RedFlag
 
@@ -125,6 +126,7 @@ class TextAnalyzer:
                 log.warning("could not load %s (%s); falling back", name, exc)
         if self.scorer is None:
             log.warning("no trained text model in %s; using rules only", self.models_dir)
+        self.novelty = NoveltyDetector.load(self.models_dir / config.NOVELTY_DIR_SUFFIX)
 
     @property
     def threshold(self) -> float:
@@ -154,10 +156,21 @@ class TextAnalyzer:
             return ModalityResult.unavailable("text")
         text = text[: config.MAX_TEXT_CHARS]
         flags = detect_red_flags(text)
-        p_model = float(self.model_proba([text])[0])
+        p_raw = float(self.model_proba([text])[0])
+        p_model, ood, nov = p_raw, False, None
+        if self.novelty is not None and self.scorer is not None:
+            nov = float(self.novelty.novelty([text])[0])
+            ood = nov > self.novelty.threshold
+            # Far from anything seen in training, the score carries no evidence: shrink to the prior.
+            p_model = shrink_toward_prior(p_raw, nov, config.RULES_ONLY_PRIOR, self.novelty.threshold)
         prob = boost_with_rules(p_model, flags) if self.use_rules_boost else p_model
         explanation: dict = {"model": self.model_name, "model_probability": round(p_model, 4),
                              "threshold": self.threshold}
+        if nov is not None:
+            explanation["novelty"] = round(nov, 4)
+            explanation["out_of_distribution"] = ood
+            if ood:
+                explanation["raw_model_probability"] = round(p_raw, 4)
         if explain and self.scorer is not None:
             try:
                 explanation["lime_top_words"] = self._lime_words(text)
@@ -165,5 +178,8 @@ class TextAnalyzer:
                 log.warning("LIME failed: %s", exc)
         extracted = extract_entities(text)
         extracted["n_chars"] = len(text)
+        if ood:
+            # Picked up by the fuser's abstention check.
+            extracted["out_of_distribution"] = True
         return ModalityResult(modality="text", probability=min(max(prob, 0.0), 1.0), red_flags=flags,
                               extracted=extracted, explanation=explanation)

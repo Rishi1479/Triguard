@@ -55,6 +55,48 @@ S_DESC_SUBTLE = [
 ]
 
 
+# Offer/appointment letters previously appeared ONLY in the scam class, so the models learned
+# "offer letter => scam" and flagged every genuine offer letter. Genuine offer letters must exist
+# in the data for the register to carry no label information on its own.
+G_OFFER = [
+    "We are pleased to offer you the {t} position at {co}, starting {date}.",
+    "Congratulations! Following your interview rounds we are glad to confirm this offer.",
+    "You have been selected for this role after the technical and HR discussions.",
+    "Your skills and experience will be a valuable asset to our team.",
+    "In this full-time role you will report to the {mgr}, {mgr_title}.",
+    "Your annual compensation will be {ctc}, along with benefits as per company policy.",
+    "This offer is subject to the standard background verification and reference checks.",
+    "Please sign and return a copy of this letter by {date} to confirm your acceptance.",
+    "Your place of work will be our {city} office; working hours are 9:30 am to 6:30 pm.",
+    "We look forward to welcoming you and supporting your growth at {co}.",
+    "Any queries may be addressed to the HR team at hr@{dom}.",
+    "Notice period during probation is 30 days, as detailed in the enclosed terms.",
+    "Please find your offer letter and the detailed terms of employment enclosed with this mail.",
+    "This offer letter supersedes any previous verbal discussion regarding compensation.",
+]
+# Fake offer letters mimic the genuine register closely and differ only in BEHAVIOUR (a fee, an
+# identity-document demand, a free-mail recruiter, no interview). Keeping both classes in this
+# register is what forces the model to learn the behaviour instead of the document type.
+S_OFFER = [
+    "Congratulations! We are pleased to offer you the {t} position at {co}, starting immediately.",
+    "Your profile has been selected without any interview round.",
+    "Your annual compensation will be {ctc}, credited weekly to your account.",
+    "To confirm your seat and receive the offer letter, pay a refundable registration fee of {fee} on UPI.",
+    "Kindly send your Aadhaar, PAN and bank account details to complete verification.",
+    "Reply to {mail} only; our HR will coordinate the rest on WhatsApp.",
+    "This offer is valid for 24 hours and limited seats are remaining.",
+    "A security deposit of {fee} is required for the company laptop, refundable after one month.",
+]
+SCAM_OFFER_SHARE = 0.35  # share of scam rows written as fake offer letters
+
+MANAGERS = ["Samuel Boateng", "Priya Raghavan", "Daniel Okafor", "Meera Nair", "Thomas Lindqvist", "Ananya Bose"]
+MANAGER_TITLES = ["Senior Branch Manager", "Head of Engineering", "Director of Operations",
+                  "Senior Manager, Analytics", "Regional Sales Head"]
+OFFER_DATES = ["10th May 2026", "1st July 2026", "15th March 2026", "2nd January 2027"]
+CTC = ["USD 72,000 per annum", "Rs 9,60,000 per annum", "GBP 48,000 per annum", "Rs 14,40,000 per annum"]
+GENUINE_OFFER_SHARE = 0.18  # share of genuine rows written as offer letters rather than postings
+
+
 BORDERLINE = [
     "Apply immediately, limited seats for the campus drive.",
     "Our recruiter will coordinate the schedule over WhatsApp.",
@@ -69,17 +111,33 @@ def _pick(rng: random.Random, pool: list[str], k: int) -> list[str]:
     return rng.sample(pool, min(k, len(pool)))
 
 
-def _fill(rng: random.Random, s: str, title: str) -> str:
+def _fill(rng: random.Random, s: str, title: str, company: str = "") -> str:
     amt = rng.choice(["$3000", "$5000", "Rs 50,000", "₹40,000", "$2500"])
     fee = rng.choice(["Rs 1,500", "₹2,000", "$99", "Rs 3,500", "₹999"])
     mail = f"{rng.choice(['hr', 'jobs', 'careers'])}{rng.randint(10, 99)}@{rng.choice(['gmail.com', 'yahoo.com', 'outlook.com'])}"
-    return s.format(t=title, city=rng.choice(CITIES), amt=amt, fee=fee, mail=mail)
+    co = company or rng.choice(COMPANIES)
+    return s.format(t=title, city=rng.choice(CITIES), amt=amt, fee=fee, mail=mail, co=co,
+                    dom=co.lower().replace(" ", "") + ".com", date=rng.choice(OFFER_DATES),
+                    mgr=rng.choice(MANAGERS), mgr_title=rng.choice(MANAGER_TITLES), ctc=rng.choice(CTC))
 
 
 def _genuine_row(rng: random.Random) -> dict:
+    """A genuine posting, or (``GENUINE_OFFER_SHARE`` of the time) a genuine offer letter."""
     title = rng.choice(GENUINE_TITLES)
     comp = rng.choice(COMPANIES)
-    desc = " ".join(_fill(rng, s, title) for s in _pick(rng, G_DESC, rng.randint(4, 7)))
+    if rng.random() < GENUINE_OFFER_SHARE:
+        # Offer-letter register in the genuine class: without these rows the models treat
+        # "we are pleased to offer you ..." as a scam signal on its own.
+        sents = [G_OFFER[0], *_pick(rng, G_OFFER[1:], rng.randint(4, 6))]
+        desc = " ".join(_fill(rng, x, title, comp) for x in sents)
+        return {
+            "title": f"Offer of employment – {title}",
+            "company_profile": f"<p>{comp} is a global company building products people love.</p>",
+            "description": f"<p>{desc}</p>",
+            "requirements": "Signed acceptance and standard background verification.",
+            "benefits": ", ".join(_pick(rng, G_BEN, 3)), "fraudulent": 0,
+        }
+    desc = " ".join(_fill(rng, s, title, comp) for s in _pick(rng, G_DESC, rng.randint(4, 7)))
     req = f"{rng.randint(1, 8)}+ years of experience. Skills: {', '.join(_pick(rng, SKILLS, 4))}. Bachelor's degree."
     if rng.random() < 0.2:
         desc += " " + _fill(rng, rng.choice(BORDERLINE), title)
@@ -91,7 +149,21 @@ def _genuine_row(rng: random.Random) -> dict:
 
 
 def _scam_row(rng: random.Random) -> dict:
-    """A scam posting whose scam signal strength varies: 20% none, 40% one cue, 40% several."""
+    """A scam posting, or (``SCAM_OFFER_SHARE``) a fake offer letter.
+
+    Signal strength varies: 20% none, 40% one cue, 40% several.
+    """
+    if rng.random() < SCAM_OFFER_SHARE:
+        title = rng.choice(GENUINE_TITLES)
+        comp = rng.choice(COMPANIES)
+        sents = [S_OFFER[0], *_pick(rng, S_OFFER[1:], rng.randint(2, 4))]
+        return {
+            "title": f"Offer of employment – {title}",
+            "company_profile": "" if rng.random() < 0.5 else f"<p>{comp} is a leading growing firm.</p>",
+            "description": "<p>" + " ".join(_fill(rng, x, title, comp) for x in sents) + "</p>",
+            "requirements": rng.choice(["Anyone can apply.", "Signed acceptance.", ""]),
+            "benefits": rng.choice(["Weekly payout", "Work from home", ""]), "fraudulent": 1,
+        }
     mimic = rng.random() < 0.4  # looks like a normal posting in the non-description fields
     title = rng.choice(GENUINE_TITLES if mimic else SCAM_TITLES)
     roll = rng.random()
@@ -133,6 +205,12 @@ _CUSTOM_GENUINE = [
     "{co} campus recruitment drive: eligible students with 7 CGPA will be shortlisted for aptitude test followed by technical and HR interviews.",
     "Walk-in for Customer Support Associate at {co}, Hyderabad. Bring your resume and ID proof. No fee is charged at any stage of hiring.",
     "{co} invites applications for Data Analyst. Skills: SQL, Excel, Tableau. Email your CV to careers@{dom}.com. Hybrid work.",
+    # Genuine offer letters: the scam rows own this register otherwise, which teaches the model
+    # that any offer letter is a scam.
+    "Dear Candidate, we are pleased to offer you the position of Software Engineer at {co}. Your annual compensation will be Rs 9,60,000. Please sign and return this letter by 10th May to confirm acceptance. Queries: hr@{dom}.com",
+    "Congratulations! Following your interviews, {co} is pleased to extend an offer for the role of Business Analyst. Start date 1st July. This offer is subject to standard background verification. No payment is required at any stage.",
+    "{co} offer of employment: Relationship Manager, reporting to the Senior Branch Manager. Annual CTC Rs 7,20,000 plus benefits as per company policy. Your appointment letter is attached; contact hr@{dom}.com with questions.",
+    "You have been selected for the Data Analyst position at {co} after the online assessment and two interview rounds. Formal offer letter attached. Joining date 15th March. HR: hr@{dom}.com",
 ]
 
 

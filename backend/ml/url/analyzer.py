@@ -9,8 +9,9 @@ import numpy as np
 
 from ml.common import config
 from ml.common.schemas import ModalityResult, RedFlag, Severity
-from ml.url.features import FEATURE_NAMES, PLATFORM_LINKS, extract_features, parse_host, registered_domain
-from ml.url.impersonation import Impersonation, check_impersonation
+from ml.url.features import (FEATURE_NAMES, PLATFORM_LINKS, SHORTENERS, extract_features, is_ip,
+                             is_reserved_domain, parse_host, registered_domain)
+from ml.url.impersonation import Impersonation, check_impersonation, official_domains
 from ml.url.live_checks import LiveChecker, LiveSignals
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,10 @@ def lexical_flags(url: str, feats: dict[str, float], imp: Impersonation | None) 
             f"Domain imitates {imp.company} (official site: {imp.real_domain})." if strong
             else f"URL path mentions {imp.company} but the site is not {imp.real_domain}.",
             "high" if strong else "low", host))
+    if is_reserved_domain(host):
+        flags.append(_flag("PLACEHOLDER_DOMAIN",
+                           "The link uses a reserved placeholder address that cannot belong to a real company website.",
+                           "high", host))
     if feats["is_ip_host"]:
         flags.append(_flag("IP_ADDRESS_HOST", "Link points to a raw IP address, not a company domain.", "medium", host))
     if feats["is_shortener"]:
@@ -62,6 +67,27 @@ def live_flags(sig: LiveSignals, domain: str) -> list[RedFlag]:
     if sig.ssl_ok is False:
         flags.append(_flag("SSL_INVALID", "No valid TLS certificate could be verified for this site.", "medium", domain))
     return flags
+
+
+def recognition_flags(domain: str, imp: Impersonation | None, sig: LiveSignals) -> list[RedFlag]:
+    """Flag a domain we cannot tie to a known employer or job platform.
+
+    Most legitimate small employers are not in ``company_domains.csv`` either, so this is only a low
+    severity note. It is skipped whenever the host already carries a more specific flag (impersonation,
+    placeholder, raw IP, shortener, generic form/chat link) and whenever WHOIS shows the domain to be
+    established, so it stays a signal rather than a line on every result.
+    """
+    already_flagged = (imp is not None or is_reserved_domain(domain) or domain in SHORTENERS
+                       or any(p.split("/")[0] == domain for p in PLATFORM_LINKS))
+    if (already_flagged or domain in official_domains() or domain in config.ATS_DOMAINS
+            or is_ip(domain)):
+        return []
+    age = sig.domain_age_days
+    if age is not None and age >= config.ESTABLISHED_DOMAIN_DAYS:
+        return []
+    return [_flag("UNRECOGNIZED_EMPLOYER_DOMAIN",
+                  f"{domain} could not be matched to a known employer's official site or a recognised job platform.",
+                  "low", domain)]
 
 
 def boost(p: float, flags: list[RedFlag]) -> float:
@@ -135,6 +161,7 @@ class URLAnalyzer:
         flags = lexical_flags(url, extract_features(url), None) if target != url else []
         flags += lexical_flags(target, feats, imp)
         flags += live_flags(sig, domain)
+        flags += recognition_flags(domain, imp, sig)
         order = {"high": 0, "medium": 1, "low": 2}
         flags = sorted({(f.code, f.evidence): f for f in flags}.values(), key=lambda f: order[f.severity])
         p_model = self.model_proba(feats)
@@ -147,6 +174,7 @@ class URLAnalyzer:
                 log.warning("SHAP failed: %s", exc)
         extracted = {"url": url, "host": t_host, "registered_domain": domain,
                      "impersonates": imp.company if imp and imp.kind in _STRONG_IMPERSONATION else None,
+                     "known_employer_domain": domain in official_domains() or domain in config.ATS_DOMAINS,
                      "expanded_url": sig.expanded_url, "domain_age_days": sig.domain_age_days,
                      "live_errors": sig.errors}
         return ModalityResult(modality="url", probability=min(max(boost(p_model, flags), 0.0), 1.0), red_flags=flags,

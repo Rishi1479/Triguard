@@ -59,12 +59,24 @@ describe('ResultView', () => {
     expect(screen.getByText('Safe')).toBeInTheDocument()
   })
 
-  it('renders per-modality cards including not-provided state', () => {
+  it('renders the per-input breakdown including the not-given state', () => {
     render(<ResultView result={scamResult} onReset={() => {}} />)
-    expect(screen.getByText('Not provided')).toBeInTheDocument() // image
-    expect(screen.getByText('tcs-hiring.online')).toBeInTheDocument()
-    expect(screen.getByText('93%')).toBeInTheDocument()
-    expect(screen.getByText('fee', { selector: 'span.bg-yellow-100' })).toBeInTheDocument()
+    expect(screen.getByText('not given')).toBeInTheDocument() // image was not supplied
+    expect(screen.getByText('tcs-hiring.online')).toBeInTheDocument() // key fact, shown inline
+    expect(screen.getByText('93%')).toBeInTheDocument() // text input, direct-labelled
+    // Every bar is reachable by name, so the value is never colour-only.
+    expect(screen.getByLabelText(/^Text: 93% scam probability$/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Image: not provided$/)).toBeInTheDocument()
+  })
+
+  it('charts which words moved the score, with direction in the accessible name', () => {
+    render(<ResultView result={scamResult} onReset={() => {}} />)
+    expect(screen.getByRole('heading', { name: /what the model reacted to/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/^fee: toward scam/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^job: toward genuine/)).toBeInTheDocument()
+    // The diverging legend names both poles, so hue is not the only cue.
+    expect(screen.getByText('pushed toward scam')).toBeInTheDocument()
+    expect(screen.getByText('pushed toward genuine')).toBeInTheDocument()
   })
 
   it('includes safety tips with reporting links and the disclaimer', () => {
