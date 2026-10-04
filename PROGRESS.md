@@ -43,3 +43,16 @@ Scripts fall back to SYNTHETIC data (files prefixed `SYNTHETIC_`, flag files in 
 custom Indian set 68 rows; 400 letters (200/200) with 70/15/15 manifest.
 **Known issues**: all numbers above are SYNTHETIC. Dedupe keeps the scam row on label conflicts. URL split is random,
 not domain-grouped (possible host leakage on real data). Custom synthetic set collapses to 68 rows after anonymised dedupe.
+
+## Phase 3 — Text module
+**Built**: `ml/common/{red_flags,calibration}.py` (+ `expected_calibration_error` in metrics.py); `ml/text/{models,baselines,analyzer,evaluate}.py`;
+`ml/notebooks/text_distilbert_colab.ipynb` (weighted loss, early stopping on val PR-AUC, Platt+threshold on val, zip export, optional MuRIL cell);
+tests `tests/test_red_flags.py` (40), `tests/test_text_module.py` (13).
+**Run**: `python -m ml.text.baselines` (trains TF-IDF+LR and Bi-LSTM -> `models/text_{tfidf_lr,bilstm}/`, `reports/text_baselines.json`);
+`python -m ml.text.evaluate` -> `reports/text_results.md`. `TextAnalyzer().analyze(text)` auto-selects `models/text_distilbert/` (needs `meta.json`)
+over TF-IDF+LR, else rules only.
+**Analyzer**: calibrated model prob (Platt on val) boosted by rule flags (`config.RULE_BOOST`), LIME top words, entity extraction.
+**Metrics (SYNTHETIC data — meaningless)**: EMSCAD-like test F1 0.989 for both models (synthetic text is nearly template-separable).
+Indian custom set: ROC-AUC 1.0 but precision 0.54 at the EMSCAD-tuned threshold — shows the domain-shift issue the real data should be used to study.
+**Known issues**: all reported numbers must be regenerated with real EMSCAD. DistilBERT not trained (needs Colab/GPU); loader tested only with a tiny random model.
+Rule boost makes final probabilities slightly less calibrated (ECE reported both ways). Bi-LSTM reproduction is architecture-faithful, not a bit-exact copy of the paper.

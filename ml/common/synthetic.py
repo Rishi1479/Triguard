@@ -55,6 +55,16 @@ S_DESC_SUBTLE = [
 ]
 
 
+BORDERLINE = [
+    "Apply immediately, limited seats for the campus drive.",
+    "Our recruiter will coordinate the schedule over WhatsApp.",
+    "Salary up to Rs 50,000 per month based on skills.",
+    "Urgent requirement for this role, immediate joining preferred.",
+    "No prior experience needed for freshers, training is provided by us.",
+    "Send your resume to {mail}.",
+]
+
+
 def _pick(rng: random.Random, pool: list[str], k: int) -> list[str]:
     return rng.sample(pool, min(k, len(pool)))
 
@@ -71,6 +81,8 @@ def _genuine_row(rng: random.Random) -> dict:
     comp = rng.choice(COMPANIES)
     desc = " ".join(_fill(rng, s, title) for s in _pick(rng, G_DESC, rng.randint(4, 7)))
     req = f"{rng.randint(1, 8)}+ years of experience. Skills: {', '.join(_pick(rng, SKILLS, 4))}. Bachelor's degree."
+    if rng.random() < 0.2:
+        desc += " " + _fill(rng, rng.choice(BORDERLINE), title)
     return {
         "title": title, "company_profile": f"<p>{comp} is a global company building products people love.</p>",
         "description": f"<p>{desc}</p>", "requirements": req,
@@ -79,17 +91,22 @@ def _genuine_row(rng: random.Random) -> dict:
 
 
 def _scam_row(rng: random.Random) -> dict:
-    title = rng.choice(SCAM_TITLES)
-    subtle = rng.random() < 0.3
-    pool = S_DESC_SUBTLE if subtle else S_DESC_OBVIOUS + S_DESC_SUBTLE
-    sents = _pick(rng, pool, rng.randint(2, 4)) + (_pick(rng, G_DESC, 3) if subtle else [])
+    """A scam posting whose scam signal strength varies: 20% none, 40% one cue, 40% several."""
+    mimic = rng.random() < 0.4  # looks like a normal posting in the non-description fields
+    title = rng.choice(GENUINE_TITLES if mimic else SCAM_TITLES)
+    roll = rng.random()
+    n_cues = 0 if roll < 0.2 else (1 if roll < 0.6 else rng.randint(2, 3))
+    cues = _pick(rng, S_DESC_OBVIOUS, n_cues)
+    sents = cues + _pick(rng, S_DESC_SUBTLE + G_DESC, rng.randint(3, 5))
     rng.shuffle(sents)
-    return {
-        "title": title, "company_profile": "" if rng.random() < 0.6 else "We are a leading growing firm.",
-        "description": " ".join(_fill(rng, s, title) for s in sents),
+    row = _genuine_row(rng) if mimic else {
+        "company_profile": "" if rng.random() < 0.6 else "We are a leading growing firm.",
         "requirements": rng.choice(["Anyone can apply.", "10th pass. Basic typing.", "Laptop and internet.", ""]),
-        "benefits": rng.choice(["Weekly payout", "Unlimited bonus", "", "Work from home"]), "fraudulent": 1,
+        "benefits": rng.choice(["Weekly payout", "Unlimited bonus", "", "Work from home"]),
     }
+    return {"title": title, "company_profile": row["company_profile"],
+            "description": " ".join(_fill(rng, x, title) for x in sents),
+            "requirements": row["requirements"], "benefits": row["benefits"], "fraudulent": 1}
 
 
 def make_emscad_like(n_genuine: int = 2000, n_scam: int = 300, seed: int = config.SEED) -> pd.DataFrame:

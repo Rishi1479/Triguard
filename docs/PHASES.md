@@ -53,7 +53,7 @@ ALIGNED SET
 TESTS: cleaning, dedupe, anonymize, split stratification.
 
 ## Phase 3: Text module
-Status: IN PROGRESS
+Status: DONE
 
 - ml/common/red_flags.py: rule-based RedFlags (code, message, severity, evidence) for
   payment/registration/training fee or deposit (incl. ₹/Rs amounts), urgency phrases,
@@ -72,7 +72,7 @@ Status: IN PROGRESS
   comparison vs the base paper (Bi-LSTM F1 0.86, recall 0.83).
 
 ## Phase 4: URL module
-Status: TODO
+Status: IN PROGRESS
 
 - ml/url/features.py: length, counts of . - _ / ? = @ digits, subdomain depth, IP host,
   suspicious TLDs, entropy, shortener detection, keyword hits (login, verify, job, hiring,

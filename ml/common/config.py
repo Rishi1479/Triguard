@@ -42,3 +42,29 @@ EMSCAD_TEXT_COLUMNS: tuple[str, ...] = (
     "title", "company_profile", "description", "requirements", "benefits",
 )
 MIN_TEXT_CHARS: int = 20  # shorter merged texts are dropped as empty
+
+# --- Text module -----------------------------------------------------------------
+TEXT_MODEL_PRIORITY: tuple[str, ...] = ("text_distilbert", "text_tfidf_lr")  # best first
+TFIDF_WORD_NGRAMS: tuple[int, int] = (1, 2)
+TFIDF_CHAR_NGRAMS: tuple[int, int] = (3, 5)
+TFIDF_MAX_FEATURES: int = 200_000
+BILSTM_VOCAB_SIZE: int = 20_000
+BILSTM_MAX_LEN: int = 300
+BILSTM_EMBED_DIM: int = 100
+BILSTM_HIDDEN: int = 64
+BILSTM_EPOCHS: int = 6
+BILSTM_PATIENCE: int = 2
+BILSTM_BATCH: int = 64
+BILSTM_LR: float = 1e-3
+DISTILBERT_MAX_LEN: int = 256
+LIME_NUM_SAMPLES: int = 300
+LIME_TOP_WORDS: int = 8
+# Probability boost from rule flags: p' = 1 - (1-p) * prod(1 - w[severity]).
+RULE_BOOST: dict[str, float] = {"high": 0.30, "medium": 0.10, "low": 0.02}
+BASE_PAPER: dict[str, float] = {"f1": 0.86, "recall": 0.83}  # Pillai (2023) Bi-LSTM, EMSCAD
+
+# --- Calibration -------------------------------------------------------------------
+ECE_BINS: int = 10
+PROB_EPS: float = 1e-6  # clip before logit
+MAX_TEXT_CHARS: int = 20_000  # longer inputs are truncated before modelling
+RULES_ONLY_PRIOR: float = 0.10  # P(scam) before rule boosts when no trained text model exists

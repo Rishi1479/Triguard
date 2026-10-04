@@ -79,3 +79,15 @@ def find_best_threshold(y_true: Any, y_prob: Any, metric: str = "f1") -> float:
     best = np.flatnonzero(scores >= scores.max() - 1e-12)
     closest = best[np.argmin(np.abs(grid[best] - config.DEFAULT_CLASS_THRESHOLD))]
     return float(grid[closest])
+
+
+def expected_calibration_error(y_true: Any, y_prob: Any, n_bins: int = config.ECE_BINS) -> float:
+    """Expected calibration error of P(scam) using equal-width bins."""
+    y, p = _validate(y_true, y_prob)
+    idx = np.minimum((p * n_bins).astype(int), n_bins - 1)
+    ece = 0.0
+    for b in range(n_bins):
+        mask = idx == b
+        if mask.any():
+            ece += mask.mean() * abs(y[mask].mean() - p[mask].mean())
+    return float(ece)
