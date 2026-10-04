@@ -2,7 +2,9 @@
 data/raw/
 data/processed/
 data/images/
-data/aligned/
+data/aligned/*
+!data/aligned/aligned_template.csv
+!data/aligned/README.md
 models/
 !data/**/.gitkeep
 !models/.gitkeep
@@ -27,3 +29,4 @@ frontend/dist/
 # OS / IDE
 .DS_Store
 .idea/
+.venv/

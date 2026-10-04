@@ -28,7 +28,7 @@ Read CLAUDE.md and PROGRESS.md first. Phase 1 (setup) is already complete.
 ---------------------------------------------------------------------------------------
 
 ## Phase 2: Data collection & preprocessing
-Status: TODO
+Status: DONE
 
 TEXT
 - ml/text/prepare_emscad.py: load data/raw/fake_job_postings.csv (Kaggle "Real / Fake Job
@@ -53,7 +53,7 @@ ALIGNED SET
 TESTS: cleaning, dedupe, anonymize, split stratification.
 
 ## Phase 3: Text module
-Status: TODO
+Status: IN PROGRESS
 
 - ml/common/red_flags.py: rule-based RedFlags (code, message, severity, evidence) for
   payment/registration/training fee or deposit (incl. ₹/Rs amounts), urgency phrases,

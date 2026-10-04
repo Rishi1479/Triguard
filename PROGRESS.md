@@ -1,5 +1,14 @@
 # PROGRESS
 
+## WAITING FOR USER
+_(Updated every phase; final consolidated list in Phase 10.)_
+- [ ] `data/raw/fake_job_postings.csv` (Kaggle "Real / Fake Job Posting Prediction") — currently SYNTHETIC stand-in `data/raw/SYNTHETIC_fake_job_postings.csv`.
+- [ ] `data/raw/custom_text.csv` (text,label,source; template in `data/raw/custom_text_template.csv`) — currently SYNTHETIC (68 rows).
+- [ ] `data/raw/urls/*.csv` (PhishTank and/or Kaggle malicious_phish) — currently SYNTHETIC.
+- [ ] Real offer-letter/poster images in `data/images/{scam,genuine}/` — currently 400 SYNTHETIC letters.
+- [ ] `data/aligned/aligned.csv` (see `data/aligned/README.md`) — none yet.
+- [ ] Re-run after adding data: `python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images`.
+
 ## Phase 1 — Project setup (2026-10-04)
 
 **Built**
@@ -23,3 +32,14 @@
 - `evaluate` on a single-class `y_true` returns NaN AUCs and sklearn emits an MCC/confusion-matrix warning.
 - Starlette warns that `httpx` TestClient is deprecated in favour of `httpx2` (harmless for now).
 - Not a git repo yet.
+
+## Phase 2 — Data collection & preprocessing
+**Built**: `ml/common/{privacy,textprep,synthetic}.py` (anonymize, clean/dedupe/split helpers, SYNTHETIC generators);
+`ml/text/prepare_emscad.py`, `ml/text/prepare_custom.py`, `ml/url/prepare_urls.py`, `ml/image/synth_letters.py`,
+`ml/image/prepare_images.py`; `data/aligned/{aligned_template.csv,README.md}`; `tests/test_phase2.py` (14 tests).
+**Run**: `python -m ml.text.prepare_emscad` (also `prepare_custom`, `prepare_urls`, `synth_letters`, `prepare_images`).
+Scripts fall back to SYNTHETIC data (files prefixed `SYNTHETIC_`, flag files in data/processed/) when real data is absent.
+**Output (SYNTHETIC)**: text n=2300 (13% scam) -> 1610/345/345, 40 near-dups removed before the split; URLs n=2910 (51.5% scam);
+custom Indian set 68 rows; 400 letters (200/200) with 70/15/15 manifest.
+**Known issues**: all numbers above are SYNTHETIC. Dedupe keeps the scam row on label conflicts. URL split is random,
+not domain-grouped (possible host leakage on real data). Custom synthetic set collapses to 68 rows after anonymised dedupe.

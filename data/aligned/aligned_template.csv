@@ -1,0 +1,3 @@
+case_id,text,image_path,url,label,notes
+1,"Pay Rs 2,000 registration fee to confirm your internship. Contact hr@gmail.com",data/aligned/images/case_001.png,http://tcs-hiring.online/apply,1,"scam on all three modalities"
+2,"We are hiring a Data Analyst. Apply on our careers page.",,https://www.tcs.com/careers,0,"genuine; image missing is allowed"

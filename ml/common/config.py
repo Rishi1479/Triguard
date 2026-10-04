@@ -31,3 +31,14 @@ THRESHOLD_GRID_SIZE: int = 199
 LABEL_SAFE: str = "Safe"
 LABEL_SUSPICIOUS: str = "Suspicious"
 LABEL_SCAM: str = "Likely Scam"
+
+# --- Data files ---------------------------------------------------------------
+EMSCAD_FILE: str = "fake_job_postings.csv"
+CUSTOM_TEXT_FILE: str = "custom_text.csv"
+URL_RAW_DIR: Path = RAW_DIR / "urls"
+ALIGNED_FILE: str = "aligned.csv"
+SYNTHETIC_PREFIX: str = "SYNTHETIC_"
+EMSCAD_TEXT_COLUMNS: tuple[str, ...] = (
+    "title", "company_profile", "description", "requirements", "benefits",
+)
+MIN_TEXT_CHARS: int = 20  # shorter merged texts are dropped as empty
