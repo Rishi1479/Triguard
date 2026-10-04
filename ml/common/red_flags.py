@@ -69,7 +69,9 @@ def _snippet(text: str, start: int, end: int) -> str:
 
 
 def _negated(text: str, start: int) -> bool:
-    return bool(_NEGATIONS.search(text[max(0, start - NEGATION_WINDOW): start]))
+    """True if a negation word precedes ``start`` within the same sentence (and the window)."""
+    window = re.split(r"[.!?\n]", text[max(0, start - NEGATION_WINDOW): start])[-1]
+    return bool(_NEGATIONS.search(window))
 
 
 def _flag(code: str, message: str, severity: Severity, evidence: str) -> RedFlag:

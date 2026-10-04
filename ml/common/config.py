@@ -86,3 +86,18 @@ LGBM_PARAMS: dict = {
 }
 LGBM_EARLY_STOP_ROUNDS: int = 30
 SHAP_TOP_K: int = 6
+
+# --- Image module ------------------------------------------------------------------
+MAX_IMAGE_BYTES: int = 5 * 1024 * 1024
+MAX_IMAGE_PIXELS: int = 40_000_000  # decompression-bomb guard
+OCR_TARGET_MIN_SIDE: int = 1000  # upscale small images so the shorter side is at least this
+OCR_MAX_SIDE: int = 3000
+MIN_OCR_CHARS: int = 15
+OCR_TEXT_KEEP_CHARS: int = 4000  # OCR text kept in ModalityResult.extracted
+IMAGE_WEIGHT_VISUAL: float = 0.4  # CLIP visual score weight; auto-0 when models/image_clip is absent
+IMAGE_WEIGHT_OCR_TEXT: float = 0.6
+IMAGE_CLIP_DIR: Path = MODELS_DIR / "image_clip"
+CLIP_MODEL_NAME: str = "ViT-B-32"
+CLIP_PRETRAINED: str = "openai"
+OCR_GT_FILE: Path = IMAGES_DIR / "ocr_gt.csv"
+TESSERACT_TIMEOUT_S: int = 30

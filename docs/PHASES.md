@@ -88,7 +88,7 @@ Status: DONE
   top features. Mock all network calls in tests.
 
 ## Phase 5: Image & OCR module
-Status: IN PROGRESS
+Status: DONE
 
 - ml/image/preprocess.py: grayscale, denoise, deskew, adaptive threshold, resize.
 - ml/image/ocr.py: EasyOCR (en, optional hi) with Tesseract as an alternative backend;
@@ -103,7 +103,7 @@ Status: IN PROGRESS
   Never write the image to disk. Tests with generated images, including one with a QR code.
 
 ## Phase 6: Fusion, calibration & explanation
-Status: TODO
+Status: IN PROGRESS
 
 - ml/fusion/cross_modal.py: company in text/image vs URL domain; HR email domain vs
   company's real domain; QR link domain vs stated URL; salary/role mismatch between text

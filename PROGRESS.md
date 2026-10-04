@@ -7,6 +7,8 @@ _(Updated every phase; final consolidated list in Phase 10.)_
 - [ ] `data/raw/urls/*.csv` (PhishTank and/or Kaggle malicious_phish) — currently SYNTHETIC.
 - [ ] Real offer-letter/poster images in `data/images/{scam,genuine}/` — currently 400 SYNTHETIC letters.
 - [ ] `data/aligned/aligned.csv` (see `data/aligned/README.md`) — none yet.
+- [ ] Colab (GPU): run `ml/notebooks/text_distilbert_colab.ipynb` -> unzip into `models/text_distilbert/`; run `ml/notebooks/image_clip_colab.ipynb` -> unzip into `models/image_clip/` (both auto-detected, no code change).
+- [ ] `data/images/ocr_gt.csv` (path,text) with real annotated images — currently SYNTHETIC (20 letters).
 - [ ] Re-run after adding data: `python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images`.
 
 ## Phase 1 — Project setup (2026-10-04)
@@ -71,3 +73,14 @@ Malformed/unsupported-scheme input -> `available=False` + `MALFORMED_URL` flag.
 **Known issues**: needs real PhishTank/malicious_phish data for honest numbers; random (not domain-grouped) split may leak hosts; `brand_in_path` is low severity to avoid flagging job aggregators.
 `brew install libomp zbar` was needed on this Mac for LightGBM and pyzbar.
 Note (Phase 4): torch + LightGBM in one process segfaulted on macOS (duplicate libomp). Mitigated with `KMP_DUPLICATE_LIB_OK=TRUE` in `ml/__init__.py`, `n_jobs=1` for LightGBM and `tests/conftest.py`. 125 tests pass.
+
+## Phase 5 — Image & OCR module
+**Built**: `ml/image/{preprocess,ocr,qr,visual,analyzer,compare_ocr}.py`, `ml/notebooks/image_clip_colab.ipynb`, `tests/test_image_module.py` (17 tests).
+**Run**: `python -m ml.image.compare_ocr` -> `reports/ocr_compare.md`; `ImageAnalyzer().analyze(image_bytes)`.
+**Flow**: decode (in memory; size/pixel limits) -> preprocess -> OCR (EasyOCR, Tesseract fallback; Tesseract is piped via stdin so nothing touches disk)
+-> TextAnalyzer on the OCR text -> QR decode (pyzbar, OpenCV fallback; UPI QR => `QR_PAYMENT_REQUEST` high flag, URL QR => `QR_LINK` + added to `extracted.urls`)
+-> weighted combine of OCR-text prob (0.6) and CLIP prob (0.4, forced to 0 until `models/image_clip/` exists). A test asserts no temp files / imwrite / PIL save during analysis.
+**Metrics (SYNTHETIC letters, 20 images, CER)**: Tesseract 0.002, EasyOCR 0.039-0.042; preprocessing did not help on clean synthetic renders (expect it to matter on real photos).
+**Bug found & fixed**: negation window leaked across sentences ("No interview required. Pay a fee..." suppressed PAYMENT_REQUEST); now sentence-bounded (test added).
+**Known issues**: CLIP not trained (needs Colab); `extracted.ocr_text` holds OCR text in memory — the API layer must not persist it unmasked.
+EasyOCR first-run model download needed certifi's CA bundle on this Mac (handled via SSL_CERT_FILE default). Hindi OCR not enabled by default.

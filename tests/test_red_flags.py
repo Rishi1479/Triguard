@@ -126,3 +126,8 @@ def test_extract_entities():
 
 def test_extract_entities_empty():
     assert extract_entities("") == {"urls": [], "emails": [], "phones": [], "companies": []}
+
+
+def test_negation_does_not_leak_across_sentences():
+    assert "PAYMENT_REQUEST" in codes("No interview required. Pay refundable registration fee Rs 1,500 now.")
+    assert "PAYMENT_REQUEST" not in codes("Pay attention to details. We never ask for any registration fee.")
