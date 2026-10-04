@@ -119,3 +119,4 @@ ATS_DOMAINS: frozenset[str] = frozenset({
     "lever.co", "greenhouse.io", "myworkdayjobs.com", "smartrecruiters.com", "ashbyhq.com", "linkedin.com",
     "naukri.com", "indeed.com", "glassdoor.com", "internshala.com", "workable.com", "icims.com", "taleo.net",
     "successfactors.com", "wellfound.com"})
+PLATT_C: float = 1.0  # L2 strength of Platt scaling; keeps probabilities finite when validation is separable

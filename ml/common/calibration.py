@@ -22,7 +22,7 @@ class PlattCalibrator:
         """Fit on validation scores. A single-class ``y`` leaves the calibrator as identity."""
         y = np.asarray(y).astype(int)
         if len(np.unique(y)) == 2:
-            self._lr = LogisticRegression(C=1e6, max_iter=1000).fit(_logit(raw_prob), y)
+            self._lr = LogisticRegression(C=config.PLATT_C, max_iter=1000).fit(_logit(raw_prob), y)
         return self
 
     def predict(self, raw_prob: np.ndarray | float) -> np.ndarray:

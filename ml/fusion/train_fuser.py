@@ -96,7 +96,11 @@ def run(pipeline=None, models_dir: Path = config.MODELS_DIR, reports_dir: Path =
         out["note"] = f"fewer than {config.FUSION_MIN_ALIGNED} aligned rows: weighted-average fallback in use"
     folder = models_dir / "fusion"
     folder.mkdir(parents=True, exist_ok=True)
-    joblib.dump(art, folder / "fuser.joblib")
+    # A fuser learnt from SYNTHETIC cases would overfit its template cross-modal flags, so it is NOT installed:
+    # the pipeline keeps using the weighted average until a real aligned.csv has been trained on.
+    joblib.dump(art, folder / ("SYNTHETIC_fuser.joblib" if synthetic else "fuser.joblib"))
+    if synthetic and (folder / "fuser.joblib").exists():
+        (folder / "fuser.joblib").unlink()
     reports_dir.mkdir(parents=True, exist_ok=True)
     (reports_dir / "fusion_results.json").write_text(json.dumps(out, indent=2))
     return out

@@ -101,3 +101,19 @@ Reasons: <=6, severity-ranked, topped up with LIME words / SHAP phrases. One fai
 **Bug fixed**: OpenCV `convexHull` assertion in QR detector crashed image analysis on some images (now guarded; regression test).
 **Known issues**: all fusion numbers need the real aligned set (`data/aligned/aligned.csv`). Batch training uses Tesseract OCR while the API defaults to EasyOCR.
 `explanation`/`extracted.ocr_text` stay in memory only; the API layer must strip or mask before storing.
+
+## Phase 7 — Backend (FastAPI)
+**Built**: `backend/app/{main,routes,db,security,errors,logging_conf,settings}.py`, `backend/benchmark_latency.py`, `tests/test_backend.py` (13 tests) + updated `tests/test_health.py`.
+**Run**: `uvicorn backend.app.main:app --reload` (env: `TRIGUARD_DB_URL`, `TRIGUARD_CORS`, `TRIGUARD_RATE_LIMIT`, `TRIGUARD_TIMEOUT_S`, `TRIGUARD_LIVE_CHECKS=0`);
+`python -m backend.benchmark_latency` -> `reports/backend_latency.md`. Tests: `pytest tests/test_backend.py`.
+**API**: `POST /api/analyze` (multipart text?/url?/image?; 400 `no_input`, 413 too large, 415 bad image type by magic bytes, 422 validation/unusable input, 429 rate limit, 504 timeout);
+`POST /api/feedback`; `GET /api/history` (last 20, anonymised); `GET /api/stats`; `GET /health` (also reports text model + fusion mode).
+All errors share `{"error": {"code","message","request_id"}}`; JSON structured logs (no request content); `X-Request-ID`; CORS for Vite; Content-Length guard.
+Pipeline is built once in the lifespan (injectable for tests); inference runs in a `ThreadPoolExecutor`. SQLite tables `analyses` (anonymised text, URL registered domain only,
+sha256 image hash, masked reasons) and `feedback`; a test asserts raw phones/e-mails/Aadhaar and image bytes are nowhere in the DB. `ocr_text` is stripped from responses.
+**Latency (real pipeline, Tesseract, live checks off)**: text ~20 ms, url ~130 ms (first call incl. SHAP init), image-containing combos ~600 ms. With EasyOCR ~2-4 s/image on CPU.
+**Important fixes found while smoke-testing the real server**: (1) torch+LightGBM OpenMP clash on macOS made EasyOCR hang / LightGBM segfault depending on import order;
+`ml/__init__.py` now imports LightGBM then torch and sets `torch.set_num_threads(1)` (verified: server starts, EasyOCR 2 s/image). (2) Platt calibration now L2-regularised (`PLATT_C`).
+(3) A fuser trained on SYNTHETIC aligned data overfit template cross-modal flags (obvious scam -> 50%), so `train_fuser` saves it as `SYNTHETIC_fuser.joblib` and the pipeline keeps the weighted average until real `aligned.csv` exists.
+**Known issues**: rate limiter and history are in-memory/global (single process, no auth) — fine for a demo, not multi-tenant. Models trained on SYNTHETIC data are brittle on out-of-domain text
+(e.g. a short genuine posting still scores high), so live demo behaviour will only be meaningful after training on real EMSCAD. torch is single-threaded, so Bi-LSTM training/DistilBERT CPU inference are slower.
