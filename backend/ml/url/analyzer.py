@@ -78,7 +78,14 @@ class URLAnalyzer:
     def __init__(self, models_dir: Path | None = None, enable_live: bool = True,
                  live_checker: LiveChecker | None = None) -> None:
         folder = (Path(models_dir) if models_dir else config.MODELS_DIR) / "url_lgbm"
-        self.blob = joblib.load(folder / "model.joblib") if (folder / "model.joblib").exists() else None
+        self.blob = None
+        if (folder / "model.joblib").exists():
+            try:
+                blob = joblib.load(folder / "model.joblib")
+                blob["calibrator"].predict(blob["model"].predict_proba(np.zeros((1, len(FEATURE_NAMES))))[:, 1])  # self-test
+                self.blob = blob
+            except Exception as exc:  # e.g. saved with a different scikit-learn/LightGBM version: retrain
+                log.warning("URL model in %s is unusable (%s); retrain with `python -m ml.url.train`", folder, exc)
         if self.blob is None:
             log.warning("no URL model in %s; using rules only", folder)
         self.live = (live_checker or LiveChecker()) if enable_live else None

@@ -83,7 +83,9 @@ class TextAnalyzer:
             if not (folder / marker).exists():
                 continue
             try:
-                self.scorer, self.model_name = cls(folder), name
+                scorer = cls(folder)
+                scorer.predict_proba(["self-test"])  # catches artifacts saved by an incompatible library version
+                self.scorer, self.model_name = scorer, name
                 break
             except Exception as exc:  # corrupt/incomplete artifact -> try the next model
                 log.warning("could not load %s (%s); falling back", name, exc)

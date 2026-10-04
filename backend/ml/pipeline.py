@@ -20,6 +20,10 @@ class NoUsableInputError(ValueError):
     """No provided input could be analysed (all empty, unreadable or malformed)."""
 
 
+class AnalysisFailedError(RuntimeError):
+    """Every analyzer that received input crashed (a server-side bug, not bad user input)."""
+
+
 class TriGuardPipeline:
     """End-to-end analyzer. Pass pre-built analyzers to override (tests) or let it build defaults."""
 
@@ -40,7 +44,9 @@ class TriGuardPipeline:
             return fn(*args, **kw)
         except Exception:  # one failing modality must not take down the whole analysis
             log.exception("%s analyzer failed", modality)
-            return ModalityResult.unavailable(modality)
+            res = ModalityResult.unavailable(modality)
+            res.extracted["error"] = "analyzer_crashed"
+            return res
 
     def _url_results(self, url: str | None, text_res: ModalityResult, image_res: ModalityResult,
                      explain: bool) -> list[ModalityResult]:
@@ -74,6 +80,8 @@ class TriGuardPipeline:
         """Analyze any combination of inputs and return the fused verdict."""
         results, cross = self.analyze_modalities(text, image, url, explain)
         if not any(r.available for r in results):
+            if any(r.extracted.get("error") == "analyzer_crashed" for r in results):
+                raise AnalysisFailedError("An internal analyzer failed; see server logs (models may need retraining).")
             issues = [f.message for r in results for f in r.red_flags] or ["nothing could be analysed"]
             raise NoUsableInputError("; ".join(dict.fromkeys(issues)))
         prob, label = self.fuser.decide(results, cross)

@@ -133,3 +133,31 @@ def test_api_never_5xx_on_odd_input(client, data, files):
     assert r.status_code < 500, r.text
     if r.status_code != 200:
         assert "error" in r.json() and r.json()["error"]["request_id"]
+
+
+class Broken:
+    def predict_proba(self, x):
+        raise AttributeError("'LogisticRegression' object has no attribute 'multi_class'")
+
+
+def test_incompatible_model_artifacts_fall_back_to_rules(tmp_path):
+    import joblib
+
+    (tmp_path / "text_tfidf_lr").mkdir()
+    joblib.dump({"model": Broken(), "calibrator": None, "threshold": 0.5}, tmp_path / "text_tfidf_lr" / "model.joblib")
+    (tmp_path / "url_lgbm").mkdir()
+    joblib.dump({"model": Broken(), "calibrator": None, "threshold": 0.5}, tmp_path / "url_lgbm" / "model.joblib")
+    assert TextAnalyzer(tmp_path).model_name == "rules_only"
+    assert URLAnalyzer(tmp_path, enable_live=False).analyze("http://tcs-hiring.online").explanation["model"] == "rules_only"
+
+
+def test_crashing_analyzers_are_a_server_error_not_bad_input(tmp_path):
+    from ml.pipeline import AnalysisFailedError
+
+    class Boom:
+        def analyze(self, *a, **k):
+            raise RuntimeError("boom")
+
+    p = TriGuardPipeline(text=Boom(), image=Boom(), url=Boom(), fuser=Fuser(tmp_path))
+    with pytest.raises(AnalysisFailedError):
+        p.analyze(text="hello there")
