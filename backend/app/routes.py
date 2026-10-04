@@ -11,7 +11,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.db import Analysis, Feedback
 from app.errors import ApiError
-from app.security import image_hash, mask, sniff_image_type
+from app.security import image_hash, mask, mask_json, sniff_image_type
 from ml.common.schemas import FinalResult
 from ml.pipeline import NoUsableInputError
 from ml.url.features import parse_host, registered_domain
@@ -99,7 +99,8 @@ async def analyze(request: Request, text: str | None = Form(default=None), url: 
     present = "+".join(n for n, v in (("text", text), ("image", data), ("url", url)) if v)
     row = Analysis(inputs_present=present, anonymized_text=mask(text, s.stored_text_chars), url_domain=_domain(url),
                    image_hash=image_hash(data) if data else None, label=result.label, risk_score=result.risk_score,
-                   reasons=[mask(x) for x in result.reasons], latency_ms=latency)
+                   reasons=[mask(x) for x in result.reasons], latency_ms=latency,
+                   result_json=mask_json(result.model_dump()))
     with st.sessions() as db:
         db.add(row)
         db.commit()
@@ -129,6 +130,23 @@ def history(request: Request) -> list[dict]:
                  "label": r.label, "risk_score": r.risk_score, "url_domain": r.url_domain,
                  "text_preview": (r.anonymized_text or "")[:120] or None, "reasons": r.reasons[:3],
                  "latency_ms": r.latency_ms} for r in rows]
+
+
+@router.get("/api/history/{analysis_id}")
+def history_detail(analysis_id: int, request: Request) -> dict:
+    """Full (masked) record of one past analysis: what was submitted, the verdict, every reason, per-input breakdown, feedback."""
+    with request.app.state.sessions() as db:
+        r = db.get(Analysis, analysis_id)
+        if r is None:
+            raise ApiError(404, "analysis_not_found", "No such analysis.")
+        fb = db.scalars(select(Feedback).where(Feedback.analysis_id == analysis_id).order_by(Feedback.id)).all()
+        result = r.result_json or {"label": r.label, "risk_score": r.risk_score, "reasons": r.reasons,
+                                   "modality_results": [], "cross_modal_flags": []}  # rows saved before details were stored
+        return {"id": r.id, "created_at": r.created_at.isoformat(), "inputs_present": r.inputs_present,
+                "submitted_text": r.anonymized_text, "url_domain": r.url_domain, "image_submitted": r.image_hash is not None,
+                "latency_ms": r.latency_ms, "detail_available": r.result_json is not None,
+                "feedback": [{"correct": f.correct, "comment": f.comment, "created_at": f.created_at.isoformat()} for f in fb],
+                "result": {**result, "id": r.id, "latency_ms": r.latency_ms}}
 
 
 @router.get("/api/stats")

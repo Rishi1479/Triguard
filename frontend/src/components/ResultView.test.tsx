@@ -67,3 +67,33 @@ describe('ResultView', () => {
     expect(reset).toHaveBeenCalled()
   })
 })
+
+describe('reason explanations', () => {
+  it('each reason can be expanded into a plain-English explanation', async () => {
+    render(<ResultView result={scamResult} onReset={() => {}} />)
+    const buttons = screen.getAllByRole('button', { name: 'What does this mean?' })
+    expect(buttons).toHaveLength(scamResult.reasons.length)
+    await userEvent.click(buttons[1]) // the payment-request reason
+    expect(screen.getByText('You are asked to pay money')).toBeInTheDocument()
+    expect(screen.getByText(/do not charge candidates/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/cybercrime.gov.in/).length).toBeGreaterThan(1) // in the explanation and the safety tips
+    expect(buttons[1]).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Hide explanation' }))
+    expect(screen.queryByText('You are asked to pay money')).not.toBeInTheDocument()
+  })
+
+  it('explains model-driven notes without pretending they are proof', async () => {
+    const result = { ...scamResult, reasons: ['Note – Text: the AI model’s score was driven mostly by the words “fee”, “pay”. Single words are only hints, not proof.'] }
+    render(<ResultView result={result} onReset={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'What does this mean?' }))
+    expect(screen.getByText('Words that influenced the AI score')).toBeInTheDocument()
+    expect(screen.getByText(/never proves a scam/i)).toBeInTheDocument()
+  })
+
+  it('falls back to a generic explanation for unknown reasons', async () => {
+    const result = { ...scamResult, reasons: ['High risk – Text: Some brand new rule fired.'], cross_modal_flags: [], modality_results: [] }
+    render(<ResultView result={result} onReset={() => {}} />)
+    await userEvent.click(screen.getByRole('button', { name: 'What does this mean?' }))
+    expect(screen.getByText('Warning sign')).toBeInTheDocument()
+  })
+})

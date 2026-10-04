@@ -1,4 +1,4 @@
-import type { AnalyzeInput, AnalyzeResponse, HistoryItem, Stats } from './types'
+import type { AnalyzeInput, AnalyzeResponse, HistoryDetail, HistoryItem, Stats } from './types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 export const ANALYZE_TIMEOUT_MS = 120_000
@@ -72,4 +72,5 @@ export function sendFeedback(analysisId: number, correct: boolean, comment?: str
 }
 
 export const getHistory = (signal?: AbortSignal) => request<HistoryItem[]>('/api/history', { signal })
+export const getHistoryDetail = (id: number, signal?: AbortSignal) => request<HistoryDetail>(`/api/history/${id}`, { signal })
 export const getStats = (signal?: AbortSignal) => request<Stats>('/api/stats', { signal })

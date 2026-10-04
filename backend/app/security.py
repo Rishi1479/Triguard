@@ -35,6 +35,22 @@ def mask(text: str | None, limit: int | None = None) -> str | None:
     return out[:limit] if limit else out
 
 
+_URL_START = ("http://", "https://", "upi://", "www.")
+
+
+def mask_json(obj):
+    """Recursively anonymise strings (PII masks; URL query strings and UPI payment parameters dropped) for storage."""
+    if isinstance(obj, str):
+        if obj.lower().startswith(_URL_START):
+            obj = obj.split("?", 1)[0]
+        return anonymize(obj)
+    if isinstance(obj, dict):
+        return {k: mask_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [mask_json(v) for v in obj]
+    return obj
+
+
 class RateLimiter:
     """Sliding-window limiter keyed by client id. Thread-safe, in-memory (single process)."""
 

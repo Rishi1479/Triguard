@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { sendFeedback } from '../api/client'
 import type { AnalyzeResponse, Label, ModalityName, ModalityResult, RedFlag } from '../api/types'
-import { LABEL_STYLES, parseReason } from '../lib/reasons'
+import ReasonDetails from './ReasonDetails'
+import { LABEL_STYLES } from '../lib/reasons'
 import { AlertIcon, ShieldIcon, SeverityIcon, XCircleIcon } from './Icons'
 import RiskGauge from './RiskGauge'
 
@@ -20,30 +21,13 @@ export function VerdictBadge({ label }: { label: Label }) {
   )
 }
 
-export function ReasonList({ reasons }: { reasons: string[] }) {
-  return (
-    <ul className="space-y-2">
-      {reasons.map((r, i) => {
-        const p = parseReason(r)
-        return (
-          <li key={i} className="flex gap-3 rounded-lg bg-slate-50 p-3 text-sm">
-            <SeverityIcon severity={p.severity} />
-            <p>
-              <span className="sr-only">{SEVERITY_WORD[p.severity]}. </span>
-              {p.source && <strong className="mr-1">{p.source}:</strong>}
-              {p.parts.map((part, j) =>
-                part.evidence ? (
-                  <mark key={j} className="rounded bg-yellow-200 px-1 text-slate-900">“{part.text}”</mark>
-                ) : (
-                  <span key={j}>{part.text}</span>
-                ),
-              )}
-            </p>
-          </li>
-        )
-      })}
-    </ul>
-  )
+/** All red flags behind a result, used to attach explanations to each reason. */
+export function allFlags(result: { modality_results: ModalityResult[]; cross_modal_flags: RedFlag[] }): RedFlag[] {
+  return [...result.cross_modal_flags, ...result.modality_results.flatMap((m) => m.red_flags)]
+}
+
+export function ReasonList({ reasons, flags = [] }: { reasons: string[]; flags?: RedFlag[] }) {
+  return <ReasonDetails reasons={reasons} flags={flags} />
 }
 
 export function CrossModalWarnings({ flags }: { flags: RedFlag[] }) {
@@ -186,8 +170,9 @@ export default function ResultView({ result, onReset }: { result: AnalyzeRespons
       </section>
       <CrossModalWarnings flags={result.cross_modal_flags} />
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="why-title">
-        <h3 id="why-title" className="mb-3 text-lg font-bold text-navy-900">Why?</h3>
-        <ReasonList reasons={result.reasons} />
+        <h3 id="why-title" className="text-lg font-bold text-navy-900">Why?</h3>
+        <p className="mb-3 text-sm text-slate-600">Each point below can be expanded for a plain-English explanation.</p>
+        <ReasonList reasons={result.reasons} flags={allFlags(result)} />
       </section>
       <section aria-labelledby="break-title">
         <h3 id="break-title" className="mb-2 text-lg font-bold text-navy-900">Breakdown by input</h3>

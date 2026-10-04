@@ -180,3 +180,20 @@ decompression-bomb guard in `ml/image/preprocess.py` (reads PNG/JPEG header befo
 - [x] Phase 9 evaluation: CV, base-paper comparison, ablation, generalisation, ECE, figures, error analysis, RESULTS.md (synthetic-flagged)
 - [x] Phase 10 hardening & docs: edge cases, Docker, deploy guide, README, demo script
 - [ ] Real data, GPU models and real metrics — see WAITING FOR USER above
+
+## Post-split improvements (user-requested)
+**Why**: the user asked for the "Why?" reasons to be explained clearly and for the History page to show full detail on click.
+**Built**
+- `frontend/src/lib/flagHelp.ts`: a plain-English explanation (title / what we found / why it matters / what to do) for each of the ~30 red-flag codes,
+  plus two fallbacks for model-driven notes (LIME words, SHAP URL features) and a generic one for unknown codes.
+- `frontend/src/components/ReasonDetails.tsx`: each reason now has a "What does this mean?" toggle (`aria-expanded`/`aria-controls`) showing that explanation;
+  `ResultView.ReasonList` delegates to it and exports `allFlags()`.
+- `GET /api/history/{id}` (`app/routes.py`): full masked record — submitted text, URL domain, whether an image was analysed, verdict, every reason,
+  per-modality breakdown, cross-modal flags, feedback given, latency.
+- `Analysis.result_json` column (`app/db.py`) storing the masked `FinalResult`, plus `_add_missing_columns()`, a forward-only
+  `ALTER TABLE ... ADD COLUMN` migration so existing SQLite files keep working (old rows report `detail_available: false`).
+- `app/security.py: mask_json()` — recursive PII masking that also strips URL query strings (UPI/`token=` parameters) before anything is stored.
+- `frontend/src/pages/HistoryPage.tsx`: list items are now buttons opening a full report view (gauge, what was submitted, expandable reasons, breakdown, feedback) with a back link.
+- Clearer wording for `FORM_OR_MESSENGER_LINK` and for the model-evidence notes ("the AI model's score was driven mostly by the words … Single words are only hints, not proof.").
+**Tests**: backend 237 passed (3 new: history detail masking, 404 + legacy rows, DB migration); frontend 45 passed (6 new: explanation toggle, fallbacks, history detail view).
+**Verified live**: `POST /api/analyze` then `GET /api/history/1` returns the full masked record (`[EMAIL]` in place of the address, `forms.gle` as the domain).

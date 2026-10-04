@@ -32,6 +32,7 @@ class Analysis(Base):
     risk_score: Mapped[float] = mapped_column(Float)
     reasons: Mapped[list] = mapped_column(JSON, default=list)
     latency_ms: Mapped[int] = mapped_column(Integer)
+    result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # full FinalResult, masked (history detail view)
 
 
 class Feedback(Base):
@@ -53,7 +54,18 @@ def make_engine(url: str) -> Engine:
     return create_engine(url, **kw)
 
 
+def _add_missing_columns(engine: Engine) -> None:
+    """Tiny forward-only migration: ADD COLUMN for model columns that an older SQLite file lacks."""
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            have = {r[1] for r in conn.exec_driver_sql(f"PRAGMA table_info({table.name})")}
+            for col in table.columns:
+                if have and col.name not in have:
+                    conn.exec_driver_sql(f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(engine.dialect)}")
+
+
 def init_db(engine: Engine) -> sessionmaker:
-    """Create tables and return a session factory."""
+    """Create tables (migrating older files) and return a session factory."""
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
     return sessionmaker(engine, expire_on_commit=False)

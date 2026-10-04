@@ -44,6 +44,19 @@ export interface HistoryItem {
   latency_ms: number
 }
 
+export interface HistoryDetail {
+  id: number
+  created_at: string
+  inputs_present: string
+  submitted_text: string | null
+  url_domain: string | null
+  image_submitted: boolean
+  latency_ms: number
+  detail_available: boolean
+  feedback: { correct: boolean; comment: string | null; created_at: string }[]
+  result: AnalyzeResponse
+}
+
 export interface Stats {
   total_analyses: number
   label_counts: Partial<Record<Label, number>>

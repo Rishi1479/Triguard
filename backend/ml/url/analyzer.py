@@ -39,7 +39,7 @@ def lexical_flags(url: str, feats: dict[str, float], imp: Impersonation | None) 
     low = url.lower()
     hit = next((p for p in PLATFORM_LINKS if p in low and p != "bit.ly"), None)
     if hit:
-        flags.append(_flag("FORM_OR_MESSENGER_LINK", "Application via a generic form/chat link, not an official careers page.",
+        flags.append(_flag("FORM_OR_MESSENGER_LINK", f"The application is collected through a generic form/chat link ({hit}) instead of the company's own careers website.",
                            "medium", hit))
     if feats["suspicious_tld"]:
         flags.append(_flag("SUSPICIOUS_TLD", "Domain ends in a TLD commonly abused for scams.", "low", host))

@@ -184,3 +184,43 @@ def test_real_pipeline_integration(tmp_path):
         assert body["label"] in ("Suspicious", "Likely Scam") and len(body["reasons"]) >= 1
         assert {m["modality"] for m in body["modality_results"] if m["available"]} >= {"text", "image", "url"}
         assert c.get("/health").json()["text_model"] in ("text_tfidf_lr", "text_distilbert", "rules_only")
+
+
+# ---------------------------------------------------------------- history detail
+def test_history_detail_masked_and_complete(ctx):
+    c, _, db = ctx
+    aid = c.post("/api/analyze", data={"text": "Call 9876543210 now", "url": "https://x.tcs-hiring.online/p?token=SECRET123"}).json()["id"]
+    c.post("/api/feedback", json={"analysis_id": aid, "correct": False, "comment": "wrong, mail a@b.com"})
+    d = c.get(f"/api/history/{aid}").json()
+    assert d["id"] == aid and d["detail_available"] and d["url_domain"] == "tcs-hiring.online"
+    assert "9876543210" not in d["submitted_text"] and "[PHONE]" in d["submitted_text"]
+    assert d["result"]["label"] == "Suspicious" and len(d["result"]["modality_results"]) == 2 and d["result"]["cross_modal_flags"]
+    assert d["feedback"][0]["correct"] is False and "a@b.com" not in str(d["feedback"])
+    blob = str(d)
+    assert "9876543210" not in blob and "hr@gmail.com" not in blob
+    assert "SECRET123" not in sqlite3.connect(db).execute("select result_json from analyses").fetchone()[0]
+
+
+def test_history_detail_404_and_legacy_rows(tmp_path):
+    c, _, db = make_client(tmp_path)
+    with c:
+        assert err(c.get("/api/history/999"))["code"] == "analysis_not_found"
+        aid = c.post("/api/analyze", data={"text": "x"}).json()["id"]
+    con = sqlite3.connect(db)
+    con.execute("update analyses set result_json = NULL")
+    con.commit()
+    c2, _, _ = make_client(tmp_path)
+    with c2:
+        d = c2.get(f"/api/history/{aid}").json()
+        assert d["detail_available"] is False and d["result"]["label"] == "Suspicious" and d["result"]["modality_results"] == []
+
+
+def test_old_database_is_migrated(tmp_path):
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("create table analyses (id integer primary key, created_at datetime, inputs_present varchar(32), anonymized_text text, "
+                "url_domain varchar(255), image_hash varchar(64), label varchar(16), risk_score float, reasons json, latency_ms integer)")
+    con.commit()
+    from app.db import init_db, make_engine
+    init_db(make_engine(f"sqlite:///{db}"))
+    assert "result_json" in [r[1] for r in sqlite3.connect(db).execute("pragma table_info(analyses)")]

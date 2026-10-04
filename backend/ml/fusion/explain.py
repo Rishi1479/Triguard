@@ -32,12 +32,12 @@ def _model_evidence(results: list[ModalityResult]) -> list[str]:
             continue
         words = [w["word"] for w in r.explanation.get("lime_top_words", []) if w["weight"] > 0][:3]
         if words:
-            out.append(f"Note – {_MODALITY_NAME[r.modality]}: the model was most influenced by the words "
-                       + ", ".join(f"“{w}”" for w in words) + ".")
+            out.append(f"Note – {_MODALITY_NAME[r.modality]}: the AI model's score was driven mostly by the words "
+                       + ", ".join(f"“{w}”" for w in words) + ". Single words are only hints, not proof.")
         shap_terms = [_SHAP_PHRASES[s["feature"]] for s in r.explanation.get("shap_top_features", [])
                       if s["shap"] > 0 and s["feature"] in _SHAP_PHRASES][:2]
         if shap_terms:
-            out.append("Note – Link: the web address " + " and ".join(shap_terms) + ".")
+            out.append("Note – Link: the AI model noticed that the web address " + " and ".join(shap_terms) + ".")
     return out
 
 
