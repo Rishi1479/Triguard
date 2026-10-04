@@ -79,7 +79,7 @@ def url_models(tmp_path_factory):
     df = make_urls(300)
     x = np.array(features_matrix(df.url.tolist()))
     y = (df.type != "benign").astype(int).to_numpy()
-    clf = lgb.LGBMClassifier(n_estimators=40, verbose=-1, random_state=0).fit(x, y)
+    clf = lgb.LGBMClassifier(n_estimators=40, verbose=-1, random_state=0, n_jobs=1).fit(x, y)
     cal = PlattCalibrator().fit(clf.predict_proba(x)[:, 1], y)
     d = tmp_path_factory.mktemp("m") / "url_lgbm"
     d.mkdir()

@@ -82,7 +82,7 @@ URL_RULE_BOOST: dict[str, float] = {"high": 0.40, "medium": 0.12, "low": 0.03}
 LGBM_PARAMS: dict = {
     "n_estimators": 400, "learning_rate": 0.05, "num_leaves": 31, "min_child_samples": 10,
     "subsample": 0.8, "subsample_freq": 1, "colsample_bytree": 0.8, "class_weight": "balanced",
-    "random_state": SEED, "verbose": -1,
+    "random_state": SEED, "verbose": -1, "n_jobs": 1,  # n_jobs=1: avoids libomp clash with torch (segfault on macOS)
 }
 LGBM_EARLY_STOP_ROUNDS: int = 30
 SHAP_TOP_K: int = 6

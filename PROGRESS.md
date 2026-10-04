@@ -70,3 +70,4 @@ Malformed/unsupported-scheme input -> `available=False` + `MALFORMED_URL` flag.
 **Metrics (SYNTHETIC URLs — meaningless)**: test F1 1.000 (synthetic URL patterns are trivially separable).
 **Known issues**: needs real PhishTank/malicious_phish data for honest numbers; random (not domain-grouped) split may leak hosts; `brand_in_path` is low severity to avoid flagging job aggregators.
 `brew install libomp zbar` was needed on this Mac for LightGBM and pyzbar.
+Note (Phase 4): torch + LightGBM in one process segfaulted on macOS (duplicate libomp). Mitigated with `KMP_DUPLICATE_LIB_OK=TRUE` in `ml/__init__.py`, `n_jobs=1` for LightGBM and `tests/conftest.py`. 125 tests pass.
