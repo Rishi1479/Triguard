@@ -1,0 +1,34 @@
+# Backend / API
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+SQLAlchemy==2.0.36
+python-multipart==0.0.20
+httpx==0.28.1
+
+# Core ML
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+lightgbm==4.5.0
+torch==2.5.1
+transformers==4.47.1
+shap==0.46.0
+lime==0.2.0.1
+joblib==1.4.2
+
+# OCR / image
+opencv-python-headless==4.10.0.84
+easyocr==1.7.2
+pytesseract==0.3.13
+pyzbar==0.1.9
+open_clip_torch==2.29.0
+Pillow==11.0.0
+
+# URL analysis
+tldextract==5.1.3
+python-whois==0.9.5
+rapidfuzz==3.11.0
+
+# Tests
+pytest==8.3.4
