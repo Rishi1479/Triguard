@@ -101,3 +101,21 @@ CLIP_MODEL_NAME: str = "ViT-B-32"
 CLIP_PRETRAINED: str = "openai"
 OCR_GT_FILE: Path = IMAGES_DIR / "ocr_gt.csv"
 TESSERACT_TIMEOUT_S: int = 30
+
+# --- Fusion --------------------------------------------------------------------------
+FUSION_DIR: Path = MODELS_DIR / "fusion"
+FUSION_WEIGHTS: dict[str, float] = {"text": 0.40, "image": 0.25, "url": 0.35}  # renormalised over available
+CROSS_BOOST: dict[str, float] = {"high": 0.25, "medium": 0.08, "low": 0.02}
+FORCE_SUSPICIOUS_CODES: frozenset[str] = frozenset(
+    {"PAYMENT_REQUEST", "SENSITIVE_INFO_REQUEST", "OTP_REQUEST", "QR_PAYMENT_REQUEST"})
+FUSION_MIN_ALIGNED: int = 100  # fewer labelled aligned rows -> weighted-average fallback
+RECALL_TARGET_LOW: float = 0.95  # "Safe" cut-off keeps scam recall >= this on validation
+MAX_REASONS: int = 6
+MAX_EXTRA_URLS: int = 3
+SALARY_MISMATCH_RATIO: float = 1.25
+ROLE_MISMATCH_JACCARD: float = 0.2
+FIGURES_DIR: Path = REPORTS_DIR / "figures"
+ATS_DOMAINS: frozenset[str] = frozenset({
+    "lever.co", "greenhouse.io", "myworkdayjobs.com", "smartrecruiters.com", "ashbyhq.com", "linkedin.com",
+    "naukri.com", "indeed.com", "glassdoor.com", "internshala.com", "workable.com", "icims.com", "taleo.net",
+    "successfactors.com", "wellfound.com"})

@@ -36,7 +36,10 @@ def _decode_opencv(gray: np.ndarray) -> list[str]:
             return [t for t in texts if t]
     except cv2.error:
         pass
-    text = det.detectAndDecode(gray)[0]
+    try:
+        text = det.detectAndDecode(gray)[0]
+    except cv2.error:  # OpenCV asserts on some degenerate finder patterns
+        return []
     return [text] if text else []
 
 

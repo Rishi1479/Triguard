@@ -103,7 +103,7 @@ Status: DONE
   Never write the image to disk. Tests with generated images, including one with a QR code.
 
 ## Phase 6: Fusion, calibration & explanation
-Status: IN PROGRESS
+Status: DONE
 
 - ml/fusion/cross_modal.py: company in text/image vs URL domain; HR email domain vs
   company's real domain; QR link domain vs stated URL; salary/role mismatch between text
@@ -120,7 +120,7 @@ Status: IN PROGRESS
   load models once. End-to-end tests for all 7 input combinations.
 
 ## Phase 7: Backend (FastAPI)
-Status: TODO
+Status: IN PROGRESS
 
 - POST /api/analyze (multipart text?, url?, image? ≤5 MB png/jpg/webp; 400 if no input),
   POST /api/feedback, GET /api/history (last 20, anonymized), GET /api/stats, GET /health.

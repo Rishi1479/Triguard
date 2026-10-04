@@ -71,10 +71,11 @@ def render_letter(lines: list[str], rng: random.Random, np_rng: np.random.Genera
     return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
 
-def make_letter(scam: bool, rng: random.Random, np_rng: np.random.Generator) -> tuple[Image.Image, str]:
-    """Build one letter image; returns (image, ground-truth text)."""
-    co, role = rng.choice(COMPANIES), rng.choice(ROLES)
-    ctx = dict(co=co, role=role, sal=rng.choice(["450,000", "600,000", "35,000"]), fee=rng.choice(["1,500", "2,999"]),
+def make_letter(scam: bool, rng: random.Random, np_rng: np.random.Generator,
+                company: str | None = None, role: str | None = None, salary: str | None = None) -> tuple[Image.Image, str]:
+    """Build one letter image; returns (image, ground-truth text). ``company``/``role`` override the random pick."""
+    co, role = company or rng.choice(COMPANIES), role or rng.choice(ROLES)
+    ctx = dict(co=co, role=role, sal=salary or rng.choice(["450,000", "600,000", "35,000"]), fee=rng.choice(["1,500", "2,999"]),
                date="15 July", dom=co.split()[0].lower(), ph=rng.randint(10**8, 10**9 - 1), n=rng.randint(1, 99))
     pool = SCAM_BODY if scam else GENUINE_BODY
     lines = [s.format(**ctx) for s in rng.sample(pool, rng.randint(4, len(pool)))]

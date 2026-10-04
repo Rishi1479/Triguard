@@ -84,3 +84,20 @@ Note (Phase 4): torch + LightGBM in one process segfaulted on macOS (duplicate l
 **Bug found & fixed**: negation window leaked across sentences ("No interview required. Pay a fee..." suppressed PAYMENT_REQUEST); now sentence-bounded (test added).
 **Known issues**: CLIP not trained (needs Colab); `extracted.ocr_text` holds OCR text in memory — the API layer must not persist it unmasked.
 EasyOCR first-run model download needed certifi's CA bundle on this Mac (handled via SSL_CERT_FILE default). Hindi OCR not enabled by default.
+
+## Phase 6 — Fusion, calibration & explanation
+**Built**: `ml/fusion/{cross_modal,fuser,explain,make_synthetic_aligned,train_fuser}.py`, `ml/pipeline.py` (`TriGuardPipeline`, `NoUsableInputError`),
+`ml/common/plots.py` (reliability / PR / confusion figures), `tests/test_fusion.py` (24 tests incl. all 7 input combinations).
+**Run**: `python -m ml.fusion.make_synthetic_aligned` (only if you have no real aligned set), `python -m ml.fusion.train_fuser`
+(-> `models/fusion/fuser.joblib`, `reports/fusion_results.json`, `reports/figures/reliability_fusion_meta.png`, cache `data/processed/aligned_cache.joblib`).
+`TriGuardPipeline().analyze(text=None, image=None, url=None) -> FinalResult`.
+**Design**: cross-modal checks = company vs URL domain, free/mismatched HR e-mail vs named company, QR domain vs stated URL, text-vs-image company/salary/role mismatch.
+URLs found in text/image/QR are auto-analysed (max 3, tagged `extracted.source="found_in_content"`). Fuser: weighted average over available modalities
+(+ noisy-or cross-modal boost) or, once `train_fuser` has run on >=100 aligned rows, a logistic-regression meta-classifier on
+[p_text,p_image,p_url,presence x3,#cross high,#cross other] with Platt calibration; Safe/Scam thresholds tuned on validation
+(t_low keeps scam recall >=0.95; t_high = best F1). Payment / Aadhaar / OTP / UPI-QR high flags force at least "Suspicious".
+Reasons: <=6, severity-ranked, topped up with LIME words / SHAP phrases. One failing analyzer degrades to unavailable instead of crashing.
+**Metrics (SYNTHETIC aligned, 240 cases, test n~36 — NOT evidence)**: meta F1 1.000 vs weighted-average F1 0.50 (cross-modal flags perfectly separate synthetic cases).
+**Bug fixed**: OpenCV `convexHull` assertion in QR detector crashed image analysis on some images (now guarded; regression test).
+**Known issues**: all fusion numbers need the real aligned set (`data/aligned/aligned.csv`). Batch training uses Tesseract OCR while the API defaults to EasyOCR.
+`explanation`/`extracted.ocr_text` stay in memory only; the API layer must strip or mask before storing.
