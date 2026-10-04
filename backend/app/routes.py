@@ -50,8 +50,8 @@ def _domain(url: str | None) -> str | None:
         return None
 
 
-async def _read_image(upload: UploadFile | None, max_bytes: int) -> bytes | None:
-    if upload is None or not upload.filename and not upload.size:
+async def _read_image(upload: UploadFile | str | None, max_bytes: int) -> bytes | None:
+    if not isinstance(upload, UploadFile) or (not upload.filename and not upload.size):  # absent or empty form field
         return None
     data = await upload.read(max_bytes + 1)
     if not data:
@@ -65,7 +65,7 @@ async def _read_image(upload: UploadFile | None, max_bytes: int) -> bytes | None
 
 @router.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(request: Request, text: str | None = Form(default=None), url: str | None = Form(default=None),
-                  image: UploadFile | None = File(default=None)) -> AnalyzeResponse:
+                  image: UploadFile | str | None = File(default=None)) -> AnalyzeResponse:
     """Analyze any combination of text, URL and image (multipart/form-data)."""
     _check_rate(request)
     st = request.app.state

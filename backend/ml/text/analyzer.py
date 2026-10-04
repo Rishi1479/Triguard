@@ -49,6 +49,7 @@ class _DistilBertScorer:
         out = []
         for i in range(0, len(texts), 16):
             enc = self.tok(texts[i: i + 16], truncation=True, max_length=self.max_len, padding=True, return_tensors="pt")
+            enc.pop("token_type_ids", None)  # DistilBERT's forward() does not accept it
             with torch.no_grad():
                 out.append(torch.softmax(self.model(**enc).logits, dim=-1)[:, 1].numpy())
         p = np.concatenate(out)
