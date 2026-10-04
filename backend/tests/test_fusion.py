@@ -83,8 +83,9 @@ def test_weighted_average_only_available():
 def test_multiple_url_results_use_max_and_feature_vector():
     r = [res("text", .3), res("url", .1), res("url", .9)]
     assert modality_probs(r)["url"] == .9 and modality_probs(r)["image"] is None
-    v = feature_vector(r, [flag(sev="high"), flag(sev="low")])
-    assert v == [.3, 0.0, .9, 1, 0, 1, 1, 1]
+    # The absent image is imputed at the prior (never 0.0, which would read as "confidently genuine").
+    v = feature_vector(r, [flag(sev="high"), flag(sev="low")], missing_prior=0.25)
+    assert v == [.3, 0.25, .9, 1, 0, 1, 1, 1]
 
 
 def test_labels_and_forced_suspicious():

@@ -90,7 +90,8 @@ class ImageAnalyzer:
 
         ents = t_res.extracted if t_res is not None else extract_entities(text)
         extracted = {**ents, "urls": list(dict.fromkeys([*ents.get("urls", []), *qr_links])), "qr_links": qr_links,
-                     "qr_payloads": qr_payloads, "ocr_text": text[: config.OCR_TEXT_KEEP_CHARS]}
+                     "qr_payloads": qr_payloads, "ocr_text": text[: config.OCR_TEXT_KEEP_CHARS],
+                     "n_chars": len(text)}  # OCR yield: drives the fuser's evidence-strength check
         explanation = {"ocr_backend": getattr(self.ocr, "name", None), "ocr_chars": len(text),
                        "visual_probability": p_vis, "text_probability": t_res.probability if t_res else None,
                        "weights": {"visual": w_vis, "ocr_text": w_txt}}

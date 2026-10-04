@@ -19,7 +19,12 @@ Everything below currently runs on SYNTHETIC stand-ins (files prefixed `SYNTHETI
 **B. Colab (GPU) models**
 - [ ] `ml/notebooks/text_distilbert_colab.ipynb` → upload `data/processed/text_{train,val,test}.csv`, download `text_distilbert.zip`, unzip to `models/text_distilbert/` (auto-selected over TF-IDF+LR).
 - [ ] `ml/notebooks/image_clip_colab.ipynb` → upload zipped `data/images/` + `data/processed/image_manifest.csv`, unzip result to `models/image_clip/` (visual weight switches from 0 to 0.4 automatically).
-- [ ] Optional: MuRIL cell in the text notebook (add `text_muril` to `TEXT_MODEL_PRIORITY` in `ml/common/config.py` to use it).
+- [ ] MuRIL / XLM-R cells in the text notebook. `text_muril` and `text_xlmr` are already first in
+  `TEXT_MODEL_PRIORITY` and are picked up automatically once `models/text_muril/` (or `text_xlmr/`)
+  contains a `meta.json`; both load through the shared `_TransformerScorer`. Indian scam text is
+  Hinglish/transliterated, so these should beat DistilBERT — this is now a priority, not optional.
+- [ ] 150-200 real hand-labelled Indian scam texts are the highest-value single addition: they unlock
+  the prior-shift transfer result (RESULTS.md section 4b), which is the project's main contribution.
 
 **C. Re-run after A and B (in this order)**
 ```bash
@@ -28,6 +33,7 @@ python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -
 python -m ml.text.baselines && python -m ml.url.train
 python -m ml.fusion.train_fuser          # real aligned.csv -> installs models/fusion/fuser.joblib (meta-classifier)
 python -m ml.image.compare_ocr
+python -m reports.robustness             # adversarial obfuscation table (RESULTS.md section 9)
 python -m ml.text.evaluate && python -m reports.evaluate_all --with-bilstm-cv
 python -m scripts.make_demo_assets       # then re-run the 4 demo cases and update docs/demo_script.md "Recorded" lines
 ```
@@ -197,3 +203,114 @@ decompression-bomb guard in `ml/image/preprocess.py` (reads PNG/JPEG header befo
 - Clearer wording for `FORM_OR_MESSENGER_LINK` and for the model-evidence notes ("the AI model's score was driven mostly by the words … Single words are only hints, not proof.").
 **Tests**: backend 237 passed (3 new: history detail masking, 404 + legacy rows, DB migration); frontend 45 passed (6 new: explanation toggle, fallbacks, history detail view).
 **Verified live**: `POST /api/analyze` then `GET /api/history/1` returns the full masked record (`[EMAIL]` in place of the address, `forms.gle` as the domain).
+
+## Methodology hardening — prediction quality, transfer & robustness (2026-10-04)
+
+Addresses the flaws found while reviewing the project rather than adding features. Six changes, all
+backend-side plus a small frontend surface. Nothing here needs real data to run, but every number it
+produces is still 🧪 SYNTHETIC until `data/raw/` is filled in (see WAITING FOR USER).
+
+### What was built
+
+**1. Cross-domain prior/threshold transfer — `ml/common/prior_shift.py` (new)**
+The biggest real finding was already sitting in `reports/RESULTS.md` §4: on the Indian set the text
+model scored ROC-AUC 1.000 but precision 0.544 / recall 1.000 / **MCC 0.000** — it was labelling
+*every* row scam. The ranking transfers; only the cut-point does not. Two corrections, cheapest first:
+- `correct_for_prior()` — shifts the logit by the prior log-odds difference
+  `log(πt/(1-πt)) - log(πs/(1-πs))`. Monotone, so AUCs are provably unchanged (tested).
+- `fit_transfer()` — when ≥ `MIN_TARGET_CALIBRATION_ROWS` (40) labelled target rows exist, re-fits
+  Platt on half and tunes the threshold there, holding the other half back for honest reporting.
+
+Result (new §4b of RESULTS.md), naive → adapted MCC: tfidf_lr 0.000 → 1.000, bilstm 0.000 → 0.675,
+hybrid_lgbm 0.000 → 0.521. This is the strongest contribution over the base paper and is now a
+first-class report section.
+
+**2. Rules as model features — `ml/common/behavioral.py` (new) + `TfidfRulesLGBM`**
+24 named behavioural features (rule firings, severity sum, contact-channel structure, free-email
+share, messenger/shortener links, money mentions, digit/upper share) now feed the model instead of
+only boosting the probability afterwards with hand-set weights. New `TfidfRulesLGBM` model in
+`ml/text/models.py` = TF-IDF → TruncatedSVD(150) ⊕ behavioural features → LightGBM, trained to
+`models/text_hybrid_lgbm/` and auto-selected by `TextAnalyzer`. `behavioural_importance()` gives
+report-ready gain per named behaviour.
+> On the synthetic data every behavioural feature gets **zero** gain — `svd_0` alone separates the
+> templates (only 12 of 174 features are used at all). That is further evidence of the circularity
+> noted below, not a defect of the feature set; it should be re-read on real data.
+
+**3. Adversarial robustness — `ml/common/robustness.py` + `reports/robustness.py` (new)**
+Six label-preserving obfuscations (`spacing`, `homoglyph`, `obfuscate_contact`, `spell_amounts`,
+`synonym_swap`, `all_combined`) applied to scam rows only. Headline result, now §9 of RESULTS.md:
+on the Indian set the rule layer fires on **100% of scams clean but only 27% under `all_combined`**
+(5 flags → 0 on a single example). Regex-only detection is evadable; this justifies learned features.
+
+**4. Missing-modality imputation + abstention — `ml/fusion/fuser.py`**
+- `feature_vector()` previously substituted `p = 0.0` for an absent modality, which reads as
+  "confidently genuine" and dragged every image-less case toward Safe. It now imputes at the
+  training-set scam prior, stored on `FuserArtifact.missing_prior` so scoring matches training.
+- `evidence_strength()` + `should_abstain()` + `Fuser.decide_full()` → new non-breaking
+  `FinalResult.abstained` / `evidence_strength` fields. A high-severity flag never abstains.
+- `RECALL_TARGET_LOW` 0.95 → 0.90 and a new `SAFE_THRESHOLD_FLOOR` (0.10): the old target drove
+  `t_low` to its floor so almost nothing could ever be labelled "Safe".
+
+**5. Bootstrap confidence intervals — `ml/common/bootstrap.py` (new)**
+Stratified percentile bootstrap (2000 resamples). The aligned set is n=240 with ~14 positives per
+test fold, so point estimates like "precision 1.000" were not reportable. New §10 of RESULTS.md
+carries intervals for every ablation configuration; `text_baselines.json` and `fusion_results.json`
+now embed a `ci` block.
+
+**6. Code-mixed text encoders + OCR caveat**
+`TEXT_MODEL_PRIORITY` is now `text_muril → text_xlmr → text_distilbert → text_hybrid_lgbm →
+text_tfidf_lr`. Indian scam text is Hinglish/transliterated, which DistilBERT handles poorly.
+`_DistilBertScorer` was generalised to `_TransformerScorer` (handles all three; only DistilBERT's
+`token_type_ids` quirk is special-cased), and unknown priority entries are skipped with a warning
+instead of raising. The OCR table in RESULTS.md §5 now carries an explicit "do not quote the backend
+ranking" warning — those images are rendered from fonts, so OCR reads back the glyphs that were
+drawn, and the EasyOCR/Tesseract ordering commonly inverts on real photos.
+
+### Files
+New: `ml/common/{prior_shift,behavioral,robustness,bootstrap}.py`, `reports/robustness.py`,
+`tests/test_{prior_shift,behavioral,robustness,bootstrap,fusion_abstain}.py`.
+Changed: `ml/common/{config,schemas}.py`, `ml/text/{models,analyzer,baselines}.py`,
+`ml/image/analyzer.py`, `ml/fusion/{fuser,train_fuser}.py`, `ml/pipeline.py`,
+`reports/evaluate_all.py`, `frontend/src/api/types.ts`,
+`frontend/src/components/ResultView.tsx` (new `ProvisionalNotice`), `frontend/src/pages/HistoryPage.tsx`.
+
+### How to run
+```bash
+cd backend
+python -m ml.text.baselines        # also trains models/text_hybrid_lgbm + the transfer report
+python -m reports.robustness       # -> reports/robustness.{md,json}
+python -m ml.fusion.train_fuser    # learns + stores missing_modality_prior
+python -m ml.text.evaluate && python -m reports.evaluate_all   # -> RESULTS.md §4b, §9, §10
+```
+
+**Tests**: backend 313 passed (76 new across 5 files); frontend 49 passed (4 new for
+`ProvisionalNotice`). Three existing tests were updated to the new intended behaviour:
+`test_fusion.py` (prior imputation replaces 0.0), `test_evaluation.py` (`ablation()` now also
+returns CI rows), `test_backend.py` (`/health` may report any model in `TEXT_MODEL_PRIORITY`).
+
+### Known issues / still open
+- **The synthetic metrics remain circular, and no amount of synthetic data fixes that.**
+  `ml/fusion/make_synthetic_aligned.py` branches on the label in all three modalities: scam URLs
+  always get `.online/.xyz/.top/.site/.work/.info` or a typo-squat while genuine URLs always get the
+  real company domain, and `synth_letters.make_letter(bool(label), …)` branches on the label too. The
+  label is independently recoverable from each modality, which is the whole explanation for
+  "URL only → precision 1.000" and the near-perfect meta-classifier. Do not invest further in the
+  generators; §1–§4 and §10 only become meaningful with real data.
+- **Rules and synthetic data share an author.** `S_DESC_OBVIOUS` in `ml/common/synthetic.py` maps
+  almost 1:1 onto the regexes in `ml/common/red_flags.py`, so "model + rules" gains are unmeasurable
+  on synthetic text.
+- **The URL module solves a different problem than it is deployed in.** It trains on PhishTank /
+  `malicious_phish` (credential-harvesting URLs), but real fake-job operations use WhatsApp numbers,
+  Telegram invites, Google Forms and clean-looking `.in` domains. Expect near-zero real recall plus
+  false alarms on legitimate ATS redirects. `suspicious_tld` will carry far less weight than §3 implies.
+- Prior correction assumes **label shift** (class-conditionals fixed, only P(y=1) moves). Indian
+  WhatsApp scam text vs. EMSCAD corporate postings is partly *covariate* shift, which only the
+  target-recalibration branch absorbs — so collecting ~50–100 labelled Indian rows matters more than
+  any further modelling.
+- Data priority unchanged and now sharper: **150–200 real hand-labelled Indian scam texts** unlock
+  §4/§4b, which is the actual thesis. Real aligned multimodal cases are the most expensive and least
+  necessary — the fusion can honestly be reported as a calibrated weighted average with ablations.
+- `MISSING_MODALITY_PRIOR` default (0.5) is only used until `train_fuser` runs; the learned prior is
+  what ships in the artifact.
+- Transformer artifacts (`text_muril`, `text_xlmr`) are still Colab work — the notebooks currently
+  only cover DistilBERT.

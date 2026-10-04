@@ -159,3 +159,70 @@ class BiLSTMClassifier:
         obj.net.load_state_dict(torch.load(folder / "model.pt", map_location="cpu"))
         obj.net.eval()
         return obj
+
+
+class TfidfRulesLGBM:
+    """TF-IDF (SVD-reduced) + named behavioural features, classified by LightGBM.
+
+    Addresses two weaknesses of the pure-lexical baselines: the rule signals become *features* the
+    model can weigh (instead of a fixed post-hoc probability boost), and SHAP over
+    ``behavioral.FEATURE_NAMES`` yields explanations that name a behaviour rather than a character
+    n-gram. Fit on the training split only -- the SVD and both vectorizers included.
+    """
+
+    def __init__(self, n_components: int = config.HYBRID_SVD_COMPONENTS) -> None:
+        from sklearn.decomposition import TruncatedSVD
+
+        self.word = TfidfVectorizer(ngram_range=config.TFIDF_WORD_NGRAMS, sublinear_tf=True, min_df=2,
+                                    max_features=config.TFIDF_MAX_FEATURES, lowercase=True)
+        self.char = TfidfVectorizer(analyzer="char_wb", ngram_range=config.TFIDF_CHAR_NGRAMS, sublinear_tf=True,
+                                    min_df=2, max_features=config.TFIDF_MAX_FEATURES, lowercase=True)
+        self.svd = TruncatedSVD(n_components=n_components, random_state=config.SEED)
+        self.clf = None
+        self.n_components = n_components
+
+    @property
+    def feature_names(self) -> list[str]:
+        """SVD component names followed by the behavioural feature names (model feature order)."""
+        from ml.common.behavioral import FEATURE_NAMES
+        return [f"svd_{i}" for i in range(self.svd.n_components)] + list(FEATURE_NAMES)
+
+    def _x(self, texts: list[str], fit: bool = False) -> np.ndarray:
+        from ml.common.behavioral import feature_matrix
+
+        if fit:
+            sparse = hstack([self.word.fit_transform(texts), self.char.fit_transform(texts)]).tocsr()
+            dense = self.svd.fit_transform(sparse)
+        else:
+            sparse = hstack([self.word.transform(texts), self.char.transform(texts)]).tocsr()
+            dense = self.svd.transform(sparse)
+        return np.hstack([dense, feature_matrix(texts)])
+
+    def fit(self, texts: list[str], y, val_texts: list[str] | None = None, val_y=None) -> "TfidfRulesLGBM":
+        """Fit on the training split, optionally early-stopping on a validation split."""
+        import lightgbm as lgb
+
+        texts = list(texts)
+        # TruncatedSVD needs n_components < n_features and < n_samples.
+        self.svd.n_components = max(2, min(self.n_components, len(texts) - 1))
+        x, yv = self._x(texts, fit=True), np.asarray(y)
+        self.clf = lgb.LGBMClassifier(**config.LGBM_PARAMS)
+        if val_texts is not None and val_y is not None and len(set(np.asarray(val_y))) == 2:
+            self.clf.fit(x, yv, eval_set=[(self._x(list(val_texts)), np.asarray(val_y))],
+                         eval_metric="average_precision",
+                         callbacks=[lgb.early_stopping(config.LGBM_EARLY_STOP_ROUNDS, verbose=False)])
+        else:
+            self.clf.fit(x, yv)
+        return self
+
+    def predict_proba(self, texts: list[str]) -> np.ndarray:
+        """Raw (uncalibrated) P(scam) per text."""
+        return self.clf.predict_proba(self._x(list(texts)))[:, 1]
+
+    def behavioural_importance(self, top_k: int = config.SHAP_TOP_K) -> list[tuple[str, float]]:
+        """Gain importance of the behavioural features only, highest first (for the report)."""
+        from ml.common.behavioral import FEATURE_NAMES
+
+        gains = self.clf.booster_.feature_importance(importance_type="gain")
+        pairs = list(zip(self.feature_names, gains))[-len(FEATURE_NAMES):]
+        return sorted(((n, float(g)) for n, g in pairs), key=lambda kv: -kv[1])[:top_k]

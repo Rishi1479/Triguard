@@ -15,6 +15,9 @@ from ml.url.analyzer import URLAnalyzer
 
 log = logging.getLogger(__name__)
 
+ABSTAIN_REASON = ("Not enough evidence for a confident verdict — treat this result as provisional "
+                  "and add more detail (full posting text, the application link, or a clearer image).")
+
 
 class NoUsableInputError(ValueError):
     """No provided input could be analysed (all empty, unreadable or malformed)."""
@@ -84,6 +87,10 @@ class TriGuardPipeline:
                 raise AnalysisFailedError("An internal analyzer failed; see server logs (models may need retraining).")
             issues = [f.message for r in results for f in r.red_flags] or ["nothing could be analysed"]
             raise NoUsableInputError("; ".join(dict.fromkeys(issues)))
-        prob, label = self.fuser.decide(results, cross)
+        prob, label, abstained = self.fuser.decide_full(results, cross)
+        reasons = build_reasons(results, cross, label)
+        if abstained:
+            reasons = [ABSTAIN_REASON, *reasons][: config.MAX_REASONS]
         return FinalResult(label=label, risk_score=round(100 * prob, 1), modality_results=results,
-                           reasons=build_reasons(results, cross, label), cross_modal_flags=cross)
+                           reasons=reasons, cross_modal_flags=cross,
+                           abstained=abstained, evidence_strength="low" if abstained else "normal")

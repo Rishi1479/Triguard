@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.settings import Settings
+from ml.common import config
 from ml.common.schemas import FinalResult, ModalityResult, RedFlag
 from ml.pipeline import NoUsableInputError
 
@@ -183,7 +184,7 @@ def test_real_pipeline_integration(tmp_path):
         body = r.json()
         assert body["label"] in ("Suspicious", "Likely Scam") and len(body["reasons"]) >= 1
         assert {m["modality"] for m in body["modality_results"] if m["available"]} >= {"text", "image", "url"}
-        assert c.get("/health").json()["text_model"] in ("text_tfidf_lr", "text_distilbert", "rules_only")
+        assert c.get("/health").json()["text_model"] in (*config.TEXT_MODEL_PRIORITY, "rules_only")
 
 
 # ---------------------------------------------------------------- history detail

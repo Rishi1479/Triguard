@@ -28,8 +28,12 @@ class _TfidfScorer:
         return self.calibrator.predict(self.model.predict_proba(texts))
 
 
-class _DistilBertScorer:
-    """Wraps a HuggingFace sequence-classification folder exported by the Colab notebook."""
+class _TransformerScorer:
+    """Wraps a HuggingFace sequence-classification folder exported by a Colab notebook.
+
+    Covers MuRIL, XLM-R and DistilBERT: the tokenizer and config travel with the folder, so the
+    only model-specific detail is that DistilBERT's ``forward()`` rejects ``token_type_ids``.
+    """
 
     def __init__(self, folder: Path) -> None:
         import torch
@@ -38,9 +42,10 @@ class _DistilBertScorer:
         meta = json.loads((folder / "meta.json").read_text())
         self.tok = AutoTokenizer.from_pretrained(folder)
         self.model = AutoModelForSequenceClassification.from_pretrained(folder).eval()
-        self.max_len = int(meta.get("max_len", config.DISTILBERT_MAX_LEN))
+        self.max_len = int(meta.get("max_len", config.TRANSFORMER_MAX_LEN))
         self.threshold = float(meta.get("threshold", config.DEFAULT_CLASS_THRESHOLD))
         self.coef, self.intercept = meta.get("platt_coef"), meta.get("platt_intercept")
+        self.accepts_token_type = "distilbert" not in type(self.model).__name__.lower()
         self._torch = torch
 
     def predict_proba(self, texts: list[str]) -> np.ndarray:
@@ -48,18 +53,43 @@ class _DistilBertScorer:
         torch = self._torch
         out = []
         for i in range(0, len(texts), 16):
-            enc = self.tok(texts[i: i + 16], truncation=True, max_length=self.max_len, padding=True, return_tensors="pt")
-            enc.pop("token_type_ids", None)  # DistilBERT's forward() does not accept it
+            enc = self.tok(texts[i: i + 16], truncation=True, max_length=self.max_len, padding=True,
+                           return_tensors="pt")
+            if not self.accepts_token_type:
+                enc.pop("token_type_ids", None)
             with torch.no_grad():
                 out.append(torch.softmax(self.model(**enc).logits, dim=-1)[:, 1].numpy())
         p = np.concatenate(out)
         if self.coef is None:
             return p
-        z = np.log(np.clip(p, config.PROB_EPS, 1 - config.PROB_EPS) / (1 - np.clip(p, config.PROB_EPS, 1 - config.PROB_EPS)))
+        clipped = np.clip(p, config.PROB_EPS, 1 - config.PROB_EPS)
+        z = np.log(clipped / (1 - clipped))
         return 1 / (1 + np.exp(-(self.coef * z + self.intercept)))
 
 
-_LOADERS = {"text_distilbert": ("meta.json", _DistilBertScorer), "text_tfidf_lr": ("model.joblib", _TfidfScorer)}
+class _HybridScorer:
+    """Wraps models/text_hybrid_lgbm/model.joblib (TF-IDF+SVD+behavioural features, LightGBM)."""
+
+    def __init__(self, folder: Path) -> None:
+        blob = joblib.load(folder / "model.joblib")
+        self.model, self.calibrator, self.threshold = blob["model"], blob["calibrator"], blob["threshold"]
+
+    def predict_proba(self, texts: list[str]) -> np.ndarray:
+        """Calibrated P(scam)."""
+        return self.calibrator.predict(self.model.predict_proba(texts))
+
+    def behavioural_importance(self, top_k: int = config.SHAP_TOP_K) -> list[tuple[str, float]]:
+        """Gain importance of the behavioural features (passthrough for explanations)."""
+        return self.model.behavioural_importance(top_k)
+
+
+_LOADERS = {
+    "text_muril": ("meta.json", _TransformerScorer),
+    "text_xlmr": ("meta.json", _TransformerScorer),
+    "text_distilbert": ("meta.json", _TransformerScorer),
+    "text_hybrid_lgbm": ("model.joblib", _HybridScorer),
+    "text_tfidf_lr": ("model.joblib", _TfidfScorer),
+}
 
 
 def boost_with_rules(p: float, flags: list[RedFlag]) -> float:
@@ -79,6 +109,9 @@ class TextAnalyzer:
         self.model_name = "rules_only"
         self.scorer = None
         for name in config.TEXT_MODEL_PRIORITY:
+            if name not in _LOADERS:
+                log.warning("no loader registered for %s; skipping", name)
+                continue
             marker, cls = _LOADERS[name]
             folder = self.models_dir / name
             if not (folder / marker).exists():
@@ -130,5 +163,7 @@ class TextAnalyzer:
                 explanation["lime_top_words"] = self._lime_words(text)
             except Exception as exc:  # explanation must never break scoring
                 log.warning("LIME failed: %s", exc)
+        extracted = extract_entities(text)
+        extracted["n_chars"] = len(text)
         return ModalityResult(modality="text", probability=min(max(prob, 0.0), 1.0), red_flags=flags,
-                              extracted=extract_entities(text), explanation=explanation)
+                              extracted=extracted, explanation=explanation)

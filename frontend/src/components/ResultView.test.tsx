@@ -7,6 +7,32 @@ import ResultView from './ResultView'
 
 beforeEach(() => vi.restoreAllMocks())
 
+describe('ResultView – provisional (abstained) verdicts', () => {
+  it('shows the provisional banner and marker when the backend abstained', () => {
+    render(<ResultView result={{ ...scamResult, abstained: true, evidence_strength: 'low' }} onReset={() => {}} />)
+    expect(screen.getByRole('status')).toHaveTextContent(/not enough evidence/i)
+    expect(screen.getByText('Provisional')).toBeInTheDocument()
+    expect(screen.getByText(/add more to go on/i)).toBeInTheDocument()
+  })
+
+  it('still renders the label and gauge so existing clients keep working', () => {
+    render(<ResultView result={{ ...scamResult, abstained: true, evidence_strength: 'low' }} onReset={() => {}} />)
+    expect(screen.getByText('Likely Scam')).toBeInTheDocument()
+    expect(screen.getByRole('meter', { name: /scam risk/i })).toHaveAttribute('aria-valuenow', '87')
+  })
+
+  it('shows nothing extra for a normal verdict', () => {
+    render(<ResultView result={safeResult} onReset={() => {}} />)
+    expect(screen.queryByText('Provisional')).not.toBeInTheDocument()
+    expect(screen.queryByText(/not enough evidence/i)).not.toBeInTheDocument()
+  })
+
+  it('treats a missing abstained field as a normal verdict', () => {
+    render(<ResultView result={scamResult} onReset={() => {}} />)
+    expect(screen.queryByText('Provisional')).not.toBeInTheDocument()
+  })
+})
+
 describe('ResultView', () => {
   it('shows the verdict, gauge value and summary', () => {
     render(<ResultView result={scamResult} onReset={() => {}} />)

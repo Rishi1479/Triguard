@@ -17,6 +17,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ml.common import config
+from ml.common.bootstrap import CI_METRICS, bootstrap_metrics, format_ci
 from ml.common.calibration import PlattCalibrator
 from ml.common.metrics import evaluate, expected_calibration_error, find_best_threshold
 from ml.common.plots import confusion_matrix_plot, pr_curve, reliability_diagram
@@ -153,7 +154,8 @@ def ablation(cases: list[dict]) -> tuple[list[list], dict[str, np.ndarray], np.n
         for tr, te in skf:
             thr = find_best_threshold(y[tr], scores[name][tr], "f1")
             preds[name][te] = (scores[name][te] >= thr).astype(int)
-    X = np.array([feature_vector(c["results"], c["cross"]) for c in cases])
+    missing_prior = float(y.mean())  # absent modality imputed at the prior, never 0.0
+    X = np.array([feature_vector(c["results"], c["cross"], missing_prior) for c in cases])
     name = "Meta-classifier (all three + cross-modal)"
     scores[name], preds[name], coverage[name] = np.zeros(len(y)), np.zeros(len(y), dtype=int), 1.0
     for tr, te in skf:
@@ -164,14 +166,20 @@ def ablation(cases: list[dict]) -> tuple[list[list], dict[str, np.ndarray], np.n
         scores[name][te] = cal.predict(m.predict_proba(X[te])[:, 1])
         preds[name][te] = (scores[name][te] >= thr).astype(int)
     from sklearn.metrics import average_precision_score, f1_score, precision_score, recall_score
-    rows = []
+    rows, ci_rows = [], []
     for n, s in scores.items():
         p = preds[n]
         pr_auc = float(average_precision_score(y, s)) if s.std() > 0 else float("nan")
         roc = float(roc_auc_score(y, s)) if s.std() > 0 else float("nan")
         rows.append([n, f"{100 * coverage[n]:.0f}%", float(precision_score(y, p, zero_division=0)),
                      float(recall_score(y, p, zero_division=0)), float(f1_score(y, p, zero_division=0)), pr_auc, roc])
-    return rows, scores, y
+        # n is only a couple of hundred rows here, so a point estimate alone is not reportable.
+        # A degenerate (constant) score has no usable ranking, so the hard predictions are
+        # bootstrapped instead and the AUC intervals come back NaN.
+        ci = (bootstrap_metrics(y, p.astype(float), 0.5) if s.std() == 0
+              else bootstrap_metrics(y, s, find_best_threshold(y, s, "f1")))
+        ci_rows.append([n, *(format_ci(ci[m]) for m in CI_METRICS)])
+    return rows, scores, y, ci_rows
 
 
 # ------------------------------------------------------------------------------- 4/5. generalisation, calibration
@@ -209,6 +217,48 @@ def calibration_section(splits: dict[str, pd.DataFrame]) -> tuple[str, dict]:
         reliability_diagram(y, cal, FIG / "reliability_url.png", "URL reliability (test)")
         out["url"] = rows[-1][1:]
     return md_table(["Model", "ECE before calibration", "ECE after Platt scaling"], rows), out
+
+
+def transfer_section() -> tuple[str, dict]:
+    """Naive vs prior-corrected threshold transfer to the Indian set (from text_baselines.json)."""
+    f = config.REPORTS_DIR / "text_baselines.json"
+    if not f.exists():
+        return "_run `python -m ml.text.baselines` first._", {}
+    base = json.loads(f.read_text())
+    rows, out = [], {}
+    for model in ("tfidf_lr", "hybrid_lgbm", "bilstm"):
+        dt = base.get(model, {}).get("domain_transfer")
+        if not dt:
+            continue
+        out[model] = dt
+        for variant in ("naive", "adapted"):
+            m = dt[variant]
+            thr = dt["naive_threshold"] if variant == "naive" else dt["adapted_threshold"]
+            rows.append([model, variant, f"{thr:.3f}", m["precision"], m["recall"], m["f1"],
+                         m["pr_auc"], m["roc_auc"], m["mcc"]])
+    if not rows:
+        return "_no labelled target-domain set available._", {}
+    any_dt = next(iter(out.values()))
+    table = md_table(["Model", "Transfer", "Threshold", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC", "MCC"], rows)
+    note = (f"Source scam prior {any_dt['source_prior']:.3f} -> target {any_dt['target_prior']:.3f} "
+            f"(logit shift {any_dt['logit_shift']:+.3f}); method `{any_dt['method']}`, "
+            f"{any_dt['n_calibration']} target rows used for recalibration, "
+            f"metrics reported on the {any_dt['n_holdout']} held-out target rows.")
+    return table + "\n\n" + note, out
+
+
+def robustness_section() -> tuple[str, dict]:
+    """Adversarial obfuscation table (from reports/robustness.json)."""
+    f = config.REPORTS_DIR / "robustness.json"
+    if not f.exists():
+        return "_run `python -m reports.robustness`._", {}
+    payload = json.loads(f.read_text())
+    cols = ("rule_recall", "recall", "precision", "f1", "mcc")
+    parts = []
+    for set_name, rows in payload["sets"].items():
+        parts += [f"**{set_name}**", "",
+                  md_table(["Attack", *cols], [[r["attack"], *(r[c] for c in cols)] for r in rows]), ""]
+    return "\n".join(parts), payload
 
 
 # ------------------------------------------------------------------------------- 6. figures
@@ -308,8 +358,10 @@ def run(with_bilstm_cv: bool = False) -> str:
     res["cv"] = cv
     paper_tbl, res["base_paper"] = base_paper_table(splits)
     cases, aligned_synth = load_cases()
-    abl_rows, scores, y_al = ablation(cases)
+    abl_rows, scores, y_al, abl_ci_rows = ablation(cases)
     gen_tbl, res["generalisation"] = generalisation(an, splits, custom)
+    tr_tbl, res["domain_transfer"] = transfer_section()
+    rob_tbl, res["robustness"] = robustness_section()
     cal_tbl, res["calibration"] = calibration_section(splits)
     figs = make_figures(splits, scores, y_al, an)
     aligned_df = pd.read_csv(next(iter([config.ALIGNED_DIR / config.ALIGNED_FILE] if (config.ALIGNED_DIR / config.ALIGNED_FILE).exists()
@@ -338,12 +390,31 @@ def run(with_bilstm_cv: bool = False) -> str:
            md_table(["Configuration", "Coverage", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC"], abl_rows), "",
            "Coverage = share of cases where the configuration has at least one input. Thresholds are tuned on each fold's training part. ![PR curves](figures/pr_ablation.png)", "",
            f"## 4. Generalisation: EMSCAD-trained text model → Indian set{tag(syn['text'])}", "", gen_tbl, "",
-           "Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F1 (threshold) indicates calibration shift rather than lost signal.", ""]
-    md += ["## 5. OCR comparison (character error rate)", "", ocr.read_text().split("\n", 2)[2] if ocr.exists() else "_run `python -m ml.image.compare_ocr`_", "",
+           "Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F1 (threshold) indicates calibration shift rather than lost signal.", "",
+           f"### 4b. Fixing the transfer: prior correction + target recalibration{tag(syn['text'])}", "", tr_tbl, "",
+           "`naive` carries the EMSCAD threshold over unchanged — the MCC of ~0 means the model labels *every* "
+           "target row as scam, so ranking is perfect but the decision is worthless. `adapted` shifts the logit by "
+           "the prior log-odds difference and re-fits Platt scaling on half the target rows, then scores the other "
+           "half. See `ml/common/prior_shift.py`.", ""]
+    md += ["## 5. OCR comparison (character error rate)", "",
+           "> **Do not quote the backend ranking from this table.** The images are rendered from fonts, so OCR "
+           "reads back the exact glyphs that were drawn; real offer letters arrive as recompressed phone photos "
+           "with skew and glare, where CER is typically 10-30x worse and the EasyOCR/Tesseract ordering commonly "
+           "inverts. Re-run on real annotated images before drawing any conclusion.", "", ocr.read_text().split("\n", 2)[2] if ocr.exists() else "_run `python -m ml.image.compare_ocr`_", "",
            f"## 6. Calibration (ECE){tag(syn['text'] or syn['url'])}", "", cal_tbl, "",
            "![text](figures/reliability_text.png) ![url](figures/reliability_url.png) ![fusion](figures/reliability_fusion_meta.png)", "",
            "## 7. Confusion matrices & PR curves", "", " ".join(f"![{f}](figures/{f})" for f in figs if f.startswith(("cm_", "pr_"))), "",
-           f"## 8. Error analysis", "", "See [error_analysis.md](error_analysis.md) (10 examples).", ""]
+           "## 8. Error analysis", "", "See [error_analysis.md](error_analysis.md) (10 examples).", "",
+           f"## 9. Adversarial robustness{tag(syn['text'])}", "", rob_tbl,
+           "Scam rows only are rewritten by label-preserving obfuscations (spacing, homoglyphs, contact "
+           "obfuscation, spelled-out amounts, euphemisms). `rule_recall` isolates the regex layer: where it "
+           "collapses, keyword matching alone would have missed the scam. Full table: "
+           "[robustness.md](robustness.md).", "",
+           f"## 10. Ablation with 95% bootstrap confidence intervals{tag(syn['aligned'])}", "",
+           md_table(["Configuration", *CI_METRICS], abl_ci_rows), "",
+           f"Stratified percentile bootstrap, {config.BOOTSTRAP_SAMPLES} resamples. With n={len(cases)} "
+           "the intervals are wide enough that most configurations in section 3 are not separable; quote "
+           "intervals, not point estimates.", ""]
     out = "\n".join(md)
     (config.REPORTS_DIR / "RESULTS.md").write_text(out)
     return out

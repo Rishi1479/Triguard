@@ -159,12 +159,39 @@ export function Disclaimer() {
   )
 }
 
+/**
+ * Shown when the backend abstained: too little evidence, or a score too close to the fence to
+ * call. The label is still rendered, but flagged as provisional so it is not read as a verdict.
+ */
+export function ProvisionalNotice({ result }: { result: { abstained?: boolean } }) {
+  if (!result.abstained) return null
+  return (
+    <section
+      role="status"
+      className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4"
+      aria-labelledby="provisional-title"
+    >
+      <h3 id="provisional-title" className="flex items-center gap-2 text-base font-bold text-amber-900">
+        <AlertIcon /> Not enough evidence for a confident verdict
+      </h3>
+      <p className="mt-2 text-sm text-amber-900">
+        Treat the result below as provisional. For a firmer answer, add more to go on — the full
+        posting text, the application link, or a clearer photo of the offer letter.
+      </p>
+    </section>
+  )
+}
+
 export default function ResultView({ result, onReset }: { result: AnalyzeResponse; onReset: () => void }) {
   const style = LABEL_STYLES[result.label]
   return (
     <div className="space-y-5" aria-live="polite">
+      <ProvisionalNotice result={result} />
       <section className="rounded-xl border border-slate-200 bg-white p-5 text-center shadow-sm" aria-label="Verdict">
         <VerdictBadge label={result.label} />
+        {result.abstained && (
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700">Provisional</p>
+        )}
         <div className="mt-4"><RiskGauge score={result.risk_score} label={result.label} /></div>
         <p className="mx-auto mt-3 max-w-lg text-sm text-slate-700">{style.summary}</p>
       </section>

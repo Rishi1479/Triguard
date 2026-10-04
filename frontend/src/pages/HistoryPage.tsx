@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError, getHistory, getHistoryDetail } from '../api/client'
 import type { HistoryDetail, HistoryItem } from '../api/types'
-import { Breakdown, CrossModalWarnings, ReasonList, allFlags } from '../components/ResultView'
+import { Breakdown, CrossModalWarnings, ProvisionalNotice, ReasonList, allFlags } from '../components/ResultView'
 import RiskGauge from '../components/RiskGauge'
 import { LABEL_STYLES } from '../lib/reasons'
 
@@ -67,6 +67,7 @@ function DetailView({ id, onBack }: { id: number; onBack: () => void }) {
             </dl>
           </section>
 
+          <ProvisionalNotice result={d.result} />
           <CrossModalWarnings flags={d.result.cross_modal_flags} />
 
           <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="why2">

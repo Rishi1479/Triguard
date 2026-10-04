@@ -1,0 +1,136 @@
+{
+  "synthetic": true,
+  "model": "text_hybrid_lgbm",
+  "sets": {
+    "EMSCAD test": [
+      {
+        "attack": "none (clean)",
+        "rule_recall": 0.9777777777777777,
+        "recall": 1.0,
+        "precision": 0.9782608695652174,
+        "f1": 0.989010989010989,
+        "mcc": 0.9874208829065749,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "spacing",
+        "rule_recall": 0.8888888888888888,
+        "recall": 0.9777777777777777,
+        "precision": 0.9777777777777777,
+        "f1": 0.9777777777777777,
+        "mcc": 0.9744444444444444,
+        "mean_prob_drop": 0.002127879186243275
+      },
+      {
+        "attack": "homoglyph",
+        "rule_recall": 0.9555555555555556,
+        "recall": 0.9777777777777777,
+        "precision": 0.9777777777777777,
+        "f1": 0.9777777777777777,
+        "mcc": 0.9744444444444444,
+        "mean_prob_drop": 0.002127879186243275
+      },
+      {
+        "attack": "obfuscate_contact",
+        "rule_recall": 0.9777777777777777,
+        "recall": 1.0,
+        "precision": 0.9782608695652174,
+        "f1": 0.989010989010989,
+        "mcc": 0.9874208829065749,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "spell_amounts",
+        "rule_recall": 0.9777777777777777,
+        "recall": 1.0,
+        "precision": 0.9782608695652174,
+        "f1": 0.989010989010989,
+        "mcc": 0.9874208829065749,
+        "mean_prob_drop": 0.0015981371963305513
+      },
+      {
+        "attack": "synonym_swap",
+        "rule_recall": 0.9333333333333333,
+        "recall": 0.9777777777777777,
+        "precision": 0.9777777777777777,
+        "f1": 0.9777777777777777,
+        "mcc": 0.9744444444444444,
+        "mean_prob_drop": 0.0020249238804655725
+      },
+      {
+        "attack": "all_combined",
+        "rule_recall": 0.9111111111111111,
+        "recall": 0.9777777777777777,
+        "precision": 0.9777777777777777,
+        "f1": 0.9777777777777777,
+        "mcc": 0.9744444444444444,
+        "mean_prob_drop": 0.0020437113266725455
+      }
+    ],
+    "Indian custom": [
+      {
+        "attack": "none (clean)",
+        "rule_recall": 1.0,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "spacing",
+        "rule_recall": 0.32432432432432434,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "homoglyph",
+        "rule_recall": 0.4594594594594595,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "obfuscate_contact",
+        "rule_recall": 1.0,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "spell_amounts",
+        "rule_recall": 0.9459459459459459,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "synonym_swap",
+        "rule_recall": 0.6486486486486487,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": 0.0
+      },
+      {
+        "attack": "all_combined",
+        "rule_recall": 0.2702702702702703,
+        "recall": 1.0,
+        "precision": 0.5441176470588235,
+        "f1": 0.7047619047619048,
+        "mcc": 0.0,
+        "mean_prob_drop": -7.616532246070119e-06
+      }
+    ]
+  }
+}

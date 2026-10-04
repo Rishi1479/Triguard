@@ -17,6 +17,7 @@ import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
 from ml.common import config
+from ml.common.bootstrap import bootstrap_metrics
 from ml.common.calibration import PlattCalibrator
 from ml.common.metrics import evaluate, expected_calibration_error, find_best_threshold
 from ml.common.plots import reliability_diagram
@@ -69,11 +70,15 @@ def run(pipeline=None, models_dir: Path = config.MODELS_DIR, reports_dir: Path =
         return [ModalityResult(**r) for r in c["results"]], [RedFlag(**f) for f in c["cross"]]
 
     y = np.array([c["label"] for c in cases])
-    X = np.array([feature_vector(*unpack(c)) for c in cases])
+    # Absent modalities are imputed at the observed scam prior, not 0.0 (which reads as
+    # "confidently genuine"). The prior is stored in the artifact so scoring matches training.
+    missing_prior = float(y.mean()) if len(y) else config.MISSING_MODALITY_PRIOR
+    X = np.array([feature_vector(*unpack(c), missing_prior) for c in cases])
     avg = np.array([weighted_average(*unpack(c)) for c in cases])
     idx = pd.DataFrame({"i": np.arange(len(y)), "label": y})
-    out: dict = {"synthetic": synthetic, "n_cases": len(y), "feature_names": FEATURE_NAMES}
-    art = FuserArtifact(n_train=0)
+    out: dict = {"synthetic": synthetic, "n_cases": len(y), "feature_names": FEATURE_NAMES,
+                 "missing_modality_prior": missing_prior}
+    art = FuserArtifact(n_train=0, missing_prior=missing_prior)
     if len(y) >= config.FUSION_MIN_ALIGNED and len(set(y)) == 2:
         tr, va, te = (part["i"].to_numpy() for part in stratified_split(idx))
         meta = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0, random_state=config.SEED).fit(X[tr], y[tr])
@@ -81,12 +86,14 @@ def run(pipeline=None, models_dir: Path = config.MODELS_DIR, reports_dir: Path =
         meta_cal = PlattCalibrator().fit(raw(va), y[va])
         avg_cal = PlattCalibrator().fit(avg[va], y[va])
         t_low, t_high = tune_thresholds(y[va], meta_cal.predict(raw(va)))
-        art = FuserArtifact(meta=meta, meta_cal=meta_cal, avg_cal=avg_cal, t_low=t_low, t_high=t_high, n_train=len(tr))
+        art = FuserArtifact(meta=meta, meta_cal=meta_cal, avg_cal=avg_cal, t_low=t_low, t_high=t_high,
+                            n_train=len(tr), missing_prior=missing_prior)
         avg_thr = find_best_threshold(y[va], avg_cal.predict(avg[va]), "f1")
         for name, p, thr in (("meta", meta_cal.predict(raw(te)), t_high),
                              ("weighted_average", avg_cal.predict(avg[te]), avg_thr)):
             m = evaluate(y[te], p, thr)
             m["ece"] = expected_calibration_error(y[te], p)
+            m["ci"] = bootstrap_metrics(y[te], p, thr)  # n is small here: always report the interval
             out[name] = m
         out["thresholds"] = {"t_low": t_low, "t_high": t_high}
         out["coefficients"] = dict(zip(FEATURE_NAMES, map(float, meta.coef_[0])))

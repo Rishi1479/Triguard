@@ -36,7 +36,7 @@ def make_cases(n=60, seed=0):
 
 
 def test_ablation_rows_and_ordering():
-    rows, scores, y = ev.ablation(make_cases())
+    rows, scores, y, ci_rows = ev.ablation(make_cases())
     names = [r[0] for r in rows]
     assert names[:2] == ["Text only", "URL only"] and names[-1].startswith("Meta-classifier") and len(rows) == len(ev.ABLATION) + 1
     by = {r[0]: r for r in rows}
@@ -44,6 +44,9 @@ def test_ablation_rows_and_ordering():
     assert pct("All three") > pct("Text only") and pct("All three") >= 90
     assert by["All three"][6] > by["Image only"][6]  # more evidence ranks better (ROC-AUC)
     assert all(0 <= s.min() and s.max() <= 1 for s in scores.values()) and len(y) == 60
+    # Every configuration also gets a bootstrap CI row, label first.
+    assert [r[0] for r in ci_rows] == names
+    assert all(len(r) == 1 + len(ev.CI_METRICS) for r in ci_rows)
 
 
 @pytest.mark.parametrize("fn,flags,near,frag", [

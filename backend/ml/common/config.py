@@ -44,7 +44,12 @@ EMSCAD_TEXT_COLUMNS: tuple[str, ...] = (
 MIN_TEXT_CHARS: int = 20  # shorter merged texts are dropped as empty
 
 # --- Text module -----------------------------------------------------------------
-TEXT_MODEL_PRIORITY: tuple[str, ...] = ("text_distilbert", "text_tfidf_lr")  # best first
+# Best first. MuRIL/XLM-R handle Hinglish + transliterated Indian scam text, which DistilBERT does not;
+# they are tried first and silently skipped when the Colab artifact is absent.
+TEXT_MODEL_PRIORITY: tuple[str, ...] = (
+    "text_muril", "text_xlmr", "text_distilbert", "text_hybrid_lgbm", "text_tfidf_lr",
+)
+TRANSFORMER_MAX_LEN: int = 256  # shared by MuRIL / XLM-R / DistilBERT scorers
 TFIDF_WORD_NGRAMS: tuple[int, int] = (1, 2)
 TFIDF_CHAR_NGRAMS: tuple[int, int] = (3, 5)
 TFIDF_MAX_FEATURES: int = 200_000
@@ -63,11 +68,34 @@ LIME_TOP_WORDS: int = 8
 RULE_BOOST: dict[str, float] = {"high": 0.30, "medium": 0.10, "low": 0.02}
 BASE_PAPER: dict[str, float] = {"f1": 0.86, "recall": 0.83}  # Pillai (2023) Bi-LSTM, EMSCAD
 
+# --- Behavioural (rule-derived) features -------------------------------------------
+# Rule firings are fed to the model as named numeric features instead of only boosting the
+# probability afterwards: behavioural cues transfer across language/geography far better than
+# lexical n-grams, and SHAP over named features is readable in the report.
+BEHAVIOURAL_FEATURE_CODES: tuple[str, ...] = (
+    "PAYMENT_REQUEST", "NO_INTERVIEW", "SENSITIVE_INFO_REQUEST", "OTP_REQUEST", "URGENCY",
+    "URGENCY_MILD", "UNREALISTIC_PAY", "MESSENGER_ONLY_CONTACT", "FREE_EMAIL_HR",
+)
+HYBRID_SVD_COMPONENTS: int = 150  # TF-IDF -> SVD before concatenating behavioural features
+HYBRID_MIN_TRAIN_ROWS: int = 200  # below this the hybrid model is not trained
+
 # --- Calibration -------------------------------------------------------------------
 ECE_BINS: int = 10
+BOOTSTRAP_SAMPLES: int = 2000  # resamples for metric confidence intervals
+BOOTSTRAP_ALPHA: float = 0.05  # -> 95% percentile intervals
+BOOTSTRAP_MIN_ROWS: int = 20  # below this a CI is reported as NaN
 PROB_EPS: float = 1e-6  # clip before logit
 MAX_TEXT_CHARS: int = 20_000  # longer inputs are truncated before modelling
 RULES_ONLY_PRIOR: float = 0.10  # P(scam) before rule boosts when no trained text model exists
+
+# --- Prior shift / cross-domain transfer -------------------------------------------
+# A source-domain threshold transferred unchanged to a target domain with a different scam
+# base rate collapses to "predict everything positive" (see reports/RESULTS.md section 4).
+# Correct the logit by the log-odds difference of the two priors, then re-fit Platt on a small
+# labelled target sample when one is available.
+MIN_TARGET_CALIBRATION_ROWS: int = 40  # fewer labelled target rows -> prior correction only
+TARGET_CALIBRATION_HOLDOUT: float = 0.5  # share of the target sample kept out of recalibration
+EMSCAD_SCAM_PRIOR: float = 0.0484  # EMSCAD fraudulent share, used as the source prior default
 
 # --- URL module --------------------------------------------------------------------
 COMPANY_DOMAINS_FILE: Path = DATA_DIR / "company_domains.csv"
@@ -109,8 +137,28 @@ CROSS_BOOST: dict[str, float] = {"high": 0.25, "medium": 0.08, "low": 0.02}
 FORCE_SUSPICIOUS_CODES: frozenset[str] = frozenset(
     {"PAYMENT_REQUEST", "SENSITIVE_INFO_REQUEST", "OTP_REQUEST", "QR_PAYMENT_REQUEST"})
 FUSION_MIN_ALIGNED: int = 100  # fewer labelled aligned rows -> weighted-average fallback
-RECALL_TARGET_LOW: float = 0.95  # "Safe" cut-off keeps scam recall >= this on validation
+# "Safe" cut-off keeps scam recall >= this on validation. 0.95 drove t_low to its floor, so almost
+# nothing could ever be labelled Safe; 0.90 with the floor below keeps the band usable.
+RECALL_TARGET_LOW: float = 0.90
+SAFE_THRESHOLD_FLOOR: float = 0.10  # t_low is never tuned below this, whatever the recall target
+
+# --- Missing modalities / abstention -------------------------------------------------
+# An absent modality must not be encoded as p=0.0 ("confidently genuine"). It is imputed at the
+# training-set prior and marked by its has_* indicator so the model can tell "absent" from "clean".
+MISSING_MODALITY_PRIOR: float = 0.5  # neutral fallback until train_fuser learns the real prior
+# Evidence weight of each modality for the abstention decision (text carries the most signal).
+EVIDENCE_WEIGHTS: dict[str, float] = {"text": 1.0, "url": 0.6, "image": 0.5}
+MIN_EVIDENCE_FOR_VERDICT: float = 0.6  # below this the verdict is reported as low-confidence
+ABSTAIN_BAND: tuple[float, float] = (0.35, 0.65)  # probabilities this close to the fence abstain
+MIN_TEXT_CHARS_FOR_VERDICT: int = 40  # very short text alone is not enough evidence
 MAX_REASONS: int = 6
+
+# --- Adversarial robustness ---------------------------------------------------------
+# Scammers evade keyword matching; recall is re-measured under these obfuscations.
+ROBUSTNESS_ATTACKS: tuple[str, ...] = (
+    "spacing", "homoglyph", "obfuscate_contact", "spell_amounts", "synonym_swap", "all_combined",
+)
+ROBUSTNESS_SEED: int = SEED
 MAX_EXTRA_URLS: int = 3
 SALARY_MISMATCH_RATIO: float = 1.25
 ROLE_MISMATCH_JACCARD: float = 0.2

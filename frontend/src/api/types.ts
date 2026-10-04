@@ -2,6 +2,8 @@
 export type Severity = 'low' | 'medium' | 'high'
 export type ModalityName = 'text' | 'image' | 'url'
 export type Label = 'Safe' | 'Suspicious' | 'Likely Scam'
+/** 'low' when the backend abstained: the verdict is provisional. */
+export type EvidenceStrength = 'low' | 'normal'
 
 export interface RedFlag {
   code: string
@@ -25,6 +27,9 @@ export interface FinalResult {
   modality_results: ModalityResult[]
   reasons: string[]
   cross_modal_flags: RedFlag[]
+  /** True when the evidence does not justify a firm verdict; `label` is then provisional. */
+  abstained?: boolean
+  evidence_strength?: EvidenceStrength
 }
 
 export interface AnalyzeResponse extends FinalResult {
