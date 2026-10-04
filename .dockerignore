@@ -1,0 +1,14 @@
+.git
+.venv
+**/__pycache__
+**/.pytest_cache
+node_modules
+frontend
+data/raw
+data/processed
+data/images
+data/aligned
+models
+reports
+tests
+*.db

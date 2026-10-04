@@ -1,0 +1,26 @@
+# docker compose up --build   ->  UI on http://localhost:8080, API on http://localhost:8000
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models:ro          # trained models (gitignored); missing models -> rule-based fallback
+      - triguard-db:/app/db              # SQLite history/feedback
+      - easyocr-cache:/home/app/.EasyOCR # EasyOCR weights downloaded on first run
+    environment:
+      TRIGUARD_LIVE_CHECKS: "1"          # WHOIS/TLS lookups (3 s timeouts); set 0 to disable
+      TRIGUARD_RATE_LIMIT: "30"
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  triguard-db:
+  easyocr-cache:

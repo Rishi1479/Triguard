@@ -1,15 +1,33 @@
 # PROGRESS
 
-## WAITING FOR USER
-_(Updated every phase; final consolidated list in Phase 10.)_
-- [ ] `data/raw/fake_job_postings.csv` (Kaggle "Real / Fake Job Posting Prediction") — currently SYNTHETIC stand-in `data/raw/SYNTHETIC_fake_job_postings.csv`.
-- [ ] `data/raw/custom_text.csv` (text,label,source; template in `data/raw/custom_text_template.csv`) — currently SYNTHETIC (68 rows).
-- [ ] `data/raw/urls/*.csv` (PhishTank and/or Kaggle malicious_phish) — currently SYNTHETIC.
-- [ ] Real offer-letter/poster images in `data/images/{scam,genuine}/` — currently 400 SYNTHETIC letters.
-- [ ] `data/aligned/aligned.csv` (see `data/aligned/README.md`) — none yet.
-- [ ] Colab (GPU): run `ml/notebooks/text_distilbert_colab.ipynb` -> unzip into `models/text_distilbert/`; run `ml/notebooks/image_clip_colab.ipynb` -> unzip into `models/image_clip/` (both auto-detected, no code change).
-- [ ] `data/images/ocr_gt.csv` (path,text) with real annotated images — currently SYNTHETIC (20 letters).
-- [ ] Re-run after adding data: `python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images`.
+## WAITING FOR USER (final, consolidated)
+Everything below currently runs on SYNTHETIC stand-ins (files prefixed `SYNTHETIC_`, flag files `data/processed/SYNTHETIC_*.flag`). Do these in order:
+
+**A. Data to add**
+- [ ] `data/raw/fake_job_postings.csv` — Kaggle "Real / Fake Job Posting Prediction" (EMSCAD).
+- [ ] `data/raw/custom_text.csv` — Indian-scam test set `text,label,source` (template: `data/raw/custom_text_template.csv`). Currently 68 synthetic rows.
+- [ ] `data/raw/urls/*.csv` — PhishTank and/or Kaggle `malicious_phish` CSVs.
+- [ ] Real offer letters / posters in `data/images/scam/` and `data/images/genuine/` (delete the `SYNTHETIC_*.png` files first).
+- [ ] `data/aligned/aligned.csv` — real multimodal cases (`case_id,text,image_path,url,label,notes`, see `data/aligned/README.md`; ≥100 labelled rows for the meta-classifier, more is better).
+- [ ] `data/images/ocr_gt.csv` — `path,text` ground truth for real images (OCR comparison). Delete `data/images/ocr/SYNTHETIC_*` and the synthetic `ocr_gt.csv`.
+- [ ] Team member names / supervisor in `README.md` (placeholder under "Team").
+
+**B. Colab (GPU) models**
+- [ ] `ml/notebooks/text_distilbert_colab.ipynb` → upload `data/processed/text_{train,val,test}.csv`, download `text_distilbert.zip`, unzip to `models/text_distilbert/` (auto-selected over TF-IDF+LR).
+- [ ] `ml/notebooks/image_clip_colab.ipynb` → upload zipped `data/images/` + `data/processed/image_manifest.csv`, unzip result to `models/image_clip/` (visual weight switches from 0 to 0.4 automatically).
+- [ ] Optional: MuRIL cell in the text notebook (add `text_muril` to `TEXT_MODEL_PRIORITY` in `ml/common/config.py` to use it).
+
+**C. Re-run after A and B (in this order)**
+```bash
+rm -f data/processed/SYNTHETIC_*.flag models/fusion/SYNTHETIC_fuser.joblib
+python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images
+python -m ml.text.baselines && python -m ml.url.train
+python -m ml.fusion.train_fuser          # real aligned.csv -> installs models/fusion/fuser.joblib (meta-classifier)
+python -m ml.image.compare_ocr
+python -m ml.text.evaluate && python -m reports.evaluate_all --with-bilstm-cv
+python -m scripts.make_demo_assets       # then re-run the 4 demo cases and update docs/demo_script.md "Recorded" lines
+```
+**D. Verify**: Docker images were written but never built (daemon was off) — run `docker compose up --build` once. `frontend` end-to-end browser test not done.
 
 ## Phase 1 — Project setup (2026-10-04)
 
@@ -137,3 +155,24 @@ Branding: "TriGuard — Verify before you apply", navy base, green/amber/red ver
 **Results (ALL SYNTHETIC — do not quote)**: CV F1 TF-IDF+LR 0.981±0.010, Bi-LSTM 0.969±0.014, LightGBM 1.000. Ablation F1: text 0.50, URL 0.84, image 0.41, text+URL 0.78, all three 0.78, +cross-modal 0.78, meta 0.99.
 The only qualitative finding worth keeping: ranking quality (PR/ROC-AUC) holds on the Indian set while F1 collapses at the EMSCAD-tuned threshold, i.e. a calibration/threshold shift, which is exactly what real Indian data should be used to study.
 **Known issues**: every number needs regenerating after real EMSCAD / URL / aligned data are added (DistilBERT row stays "pending" until its Colab model is placed in `models/text_distilbert/`). Hard-label AUROC comparison is computed for our models, not for the paper (its predictions are unavailable).
+
+## Phase 10 — Testing, deployment & docs
+**Built**: `tests/test_edge_cases.py` (44 cases: empty / 1 MB text, non-English & control characters, 16 malformed URLs, 6 corrupt images, decompression bomb, API never 5xx);
+decompression-bomb guard in `ml/image/preprocess.py` (reads PNG/JPEG header before decoding); `TRIGUARD_OCR_BACKEND` setting;
+`Dockerfile` (python:3.11-slim, CPU torch, tesseract, zbar, non-root), `frontend/Dockerfile` + `nginx.conf`, `docker-compose.yml` (models mounted read-only, SQLite + EasyOCR cache volumes), `.dockerignore`;
+`docs/deploy.md` (HF Spaces / Render + Vercel / Netlify), `docs/demo_script.md`, `scripts/make_demo_assets.py` + `docs/demo_assets/fake_offer_letter_with_qr.png`, final `README.md` (mermaid architecture, setup, training, API, results, limitations, ethics, team).
+**Final test run**: `pytest` 232 passed; `frontend` Vitest 39 passed, production build OK.
+**Known issues**: Docker build not verified (daemon not running here; only `docker compose config` validated). Demo case 4 (genuine posting) scores "Suspicious ~53%" with the synthetic stand-in text model — documented in the demo script.
+
+## Delivered-items checklist
+- [x] Phase 1 setup: structure, schemas, config, metrics, FastAPI health, Vite/React/Tailwind scaffold
+- [x] Phase 2 data prep: EMSCAD/custom/URL/image prep, dedupe-before-split, anonymiser, synthetic letters, aligned template (+ tests)
+- [x] Phase 3 text: red-flag rules, TF-IDF+LR, Bi-LSTM reproduction, DistilBERT Colab notebook, TextAnalyzer (calibrated, LIME), text_results.md
+- [x] Phase 4 URL: lexical features, impersonation (50 companies), live checks (rules only, mocked in tests), LightGBM, SHAP analyzer
+- [x] Phase 5 image: preprocessing, EasyOCR + Tesseract, QR (pyzbar + OpenCV), CLIP notebook + loader (weight 0 until trained), ImageAnalyzer (in-memory), OCR comparison
+- [x] Phase 6 fusion: cross-modal checks, weighted-average + meta-classifier fuser, recall-tuned thresholds, reliability diagrams, explanations, pipeline (7 combinations tested)
+- [x] Phase 7 backend: analyze/feedback/history/stats/health, SQLite (anonymised), rate limit, JSON logs, error shape, latency report
+- [x] Phase 8 frontend: analyze/result/history/about, gauge, evidence highlighting, feedback, safety tips, a11y, Vitest
+- [x] Phase 9 evaluation: CV, base-paper comparison, ablation, generalisation, ECE, figures, error analysis, RESULTS.md (synthetic-flagged)
+- [x] Phase 10 hardening & docs: edge cases, Docker, deploy guide, README, demo script
+- [ ] Real data, GPU models and real metrics — see WAITING FOR USER above

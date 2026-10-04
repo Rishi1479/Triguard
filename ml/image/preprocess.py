@@ -1,8 +1,11 @@
 """OpenCV preprocessing for OCR: grayscale, denoise, deskew, adaptive threshold, resize. All in memory."""
 from __future__ import annotations
 
+import io
+
 import cv2
 import numpy as np
+from PIL import Image
 
 from ml.common import config
 
@@ -18,6 +21,14 @@ def decode_image(data: bytes) -> np.ndarray:
     """Decode bytes to a BGR array without touching the disk. Rejects corrupt/oversized images."""
     if not data or len(data) > config.MAX_IMAGE_BYTES:
         raise ImageDecodeError("empty or too large image")
+    try:  # read only the header first: a tiny file can declare gigapixel dimensions (decompression bomb)
+        with Image.open(io.BytesIO(data)) as probe:
+            if probe.width * probe.height > config.MAX_IMAGE_PIXELS:
+                raise ImageDecodeError("image dimensions too large")
+    except ImageDecodeError:
+        raise
+    except Exception:
+        pass  # unreadable by PIL: let OpenCV decide below
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ImageDecodeError("not a valid image")

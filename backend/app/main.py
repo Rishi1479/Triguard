@@ -35,7 +35,7 @@ def create_app(pipeline=None, settings: Settings | None = None) -> FastAPI:
             app.state.pipeline = pipeline
         else:
             from ml.pipeline import TriGuardPipeline
-            app.state.pipeline = TriGuardPipeline(enable_live=settings.enable_live_checks)
+            app.state.pipeline = TriGuardPipeline(enable_live=settings.enable_live_checks, ocr_backend=settings.ocr_backend)
         log_event(log, "startup complete", text_model=getattr(getattr(app.state.pipeline, "text", None), "model_name", None))
         yield
         app.state.executor.shutdown(wait=False, cancel_futures=True)

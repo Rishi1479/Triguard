@@ -26,6 +26,7 @@ class Settings:
     rate_limit_per_minute: int = int(os.getenv("TRIGUARD_RATE_LIMIT", "30"))
     analysis_timeout_s: float = float(os.getenv("TRIGUARD_TIMEOUT_S", "90"))
     workers: int = int(os.getenv("TRIGUARD_WORKERS", "2"))
+    ocr_backend: str = os.getenv("TRIGUARD_OCR_BACKEND", "auto")  # auto | easyocr | tesseract (lighter on RAM)
     enable_live_checks: bool = os.getenv("TRIGUARD_LIVE_CHECKS", "1") != "0"
     history_size: int = 20
     stored_text_chars: int = 2000

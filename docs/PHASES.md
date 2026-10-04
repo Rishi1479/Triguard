@@ -162,7 +162,7 @@ Status: DONE
   came from SYNTHETIC data.
 
 ## Phase 10: Testing, deployment & docs
-Status: IN PROGRESS
+Status: DONE
 
 - Full test run; add edge cases (empty text, huge text, corrupt image, malformed URL,
   non-English text).
