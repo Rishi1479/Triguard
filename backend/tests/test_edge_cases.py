@@ -7,8 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from backend.app.main import create_app
-from backend.app.settings import Settings
+from app.main import create_app
+from app.settings import Settings
 from ml.fusion.fuser import Fuser
 from ml.image.analyzer import ImageAnalyzer
 from ml.image.preprocess import ImageDecodeError, decode_image

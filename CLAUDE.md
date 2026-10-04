@@ -20,17 +20,18 @@ on the EMSCAD dataset. We must beat and extend it.
 
 ## Folder structure
 triguard/
-  data/raw/  data/processed/  data/images/  data/aligned/
-  ml/
-    common/        # shared interface, metrics, red-flag rules
-    text/  url/  image/  fusion/
-    notebooks/     # Colab training notebooks
-  models/          # saved model artifacts (gitignored)
-  backend/app/     # FastAPI app
-  frontend/        # React app
-  reports/         # metrics, figures, ablation tables
-  tests/
-  CLAUDE.md  PROGRESS.md  README.md
+  backend/                     # self-contained: run Python commands from here
+    app/                       # FastAPI app
+    ml/
+      common/                  # shared interface, metrics, red-flag rules
+      text/  url/  image/  fusion/
+      notebooks/               # Colab training notebooks
+    data/raw/  data/processed/  data/images/  data/aligned/
+    models/                    # saved model artifacts (gitignored)
+    reports/                   # metrics, figures, ablation tables
+    tests/  scripts/  requirements.txt  Dockerfile
+  frontend/                    # React app (self-contained)
+  docs/  docker-compose.yml  CLAUDE.md  PROGRESS.md  README.md
 
 ## Shared module interface (EVERY modality must follow this)
 Each modality analyzer exposes: analyze(input) -> ModalityResult

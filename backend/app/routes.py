@@ -8,9 +8,9 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from backend.app.db import Analysis, Feedback
-from backend.app.errors import ApiError
-from backend.app.security import image_hash, mask, sniff_image_type
+from app.db import Analysis, Feedback
+from app.errors import ApiError
+from app.security import image_hash, mask, sniff_image_type
 from ml.common.schemas import FinalResult
 from ml.pipeline import NoUsableInputError
 from ml.url.features import parse_host, registered_domain

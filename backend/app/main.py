@@ -11,12 +11,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from backend.app.db import init_db, make_engine
-from backend.app.errors import error_body, install_handlers
-from backend.app.logging_conf import log_event, setup_logging
-from backend.app.routes import router
-from backend.app.security import RateLimiter
-from backend.app.settings import Settings
+from app.db import init_db, make_engine
+from app.errors import error_body, install_handlers
+from app.logging_conf import log_event, setup_logging
+from app.routes import router
+from app.security import RateLimiter
+from app.settings import Settings
 
 log = logging.getLogger("triguard.api")
 

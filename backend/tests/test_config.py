@@ -14,5 +14,5 @@ def test_thresholds_defaults():
 
 
 def test_paths_anchored_at_repo_root():
-    assert (config.ROOT_DIR / "CLAUDE.md").exists()
+    assert (config.ROOT_DIR / "requirements.txt").exists()
     assert config.RAW_DIR == config.ROOT_DIR / "data" / "raw"

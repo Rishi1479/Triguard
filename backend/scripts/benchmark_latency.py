@@ -12,8 +12,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.app.settings import Settings
+from app.main import create_app
+from app.settings import Settings
 from ml.common import config
 from ml.pipeline import TriGuardPipeline
 

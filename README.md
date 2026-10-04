@@ -7,7 +7,7 @@
 Final-year project, Team 3, Data Mining & Bigdata MRG. Extends Pillai (2023), *Detecting Fake Job Postings Using Bidirectional LSTM*
 (text-only, EMSCAD), with image/OCR, URL analysis, cross-modal consistency checks, calibration and explanations.
 
-> **Status:** the full system is implemented and tested, but all models and every number in `reports/` were produced on **SYNTHETIC stand-in data**
+> **Status:** the full system is implemented and tested, but all models and every number in `backend/reports/` were produced on **SYNTHETIC stand-in data**
 > because the real datasets and GPU-trained models were not available. See [PROGRESS.md](PROGRESS.md) → *WAITING FOR USER* for what to add and which scripts to re-run.
 
 ## Architecture
@@ -31,45 +31,50 @@ flowchart LR
 ```
 
 Every analyzer returns the same `ModalityResult` (`modality, probability, red_flags, extracted, explanation, available`); the pipeline returns a `FinalResult`
-(`label, risk_score, modality_results, reasons, cross_modal_flags`) — see [ml/common/schemas.py](ml/common/schemas.py).
+(`label, risk_score, modality_results, reasons, cross_modal_flags`) — see [backend/ml/common/schemas.py](backend/ml/common/schemas.py).
 
 ## Setup
 
 Python 3.11 is the target (3.12 also works), Node 20+.
 
+The repo has two **independent, self-contained folders**: `backend/` (API + ML, own venv, tests, data, models, Dockerfile) and `frontend/` (React app, own Dockerfile).
+They only talk over HTTP (`/api/*`).
+
 ```bash
-# Backend / ML
+# Backend / ML  (everything below is run from backend/)
+cd backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt          # large (torch, easyocr, transformers)
 # macOS only: brew install libomp zbar tesseract   (LightGBM, QR decoding, OCR fallback)
-pytest                                    # 188 tests
+pytest                                    # 232 tests
 
-# Frontend
+# Frontend  (separate terminal)
 cd frontend && npm install && npm test && npm run build
 ```
 
 ### Run
 ```bash
-uvicorn backend.app.main:app --reload      # API  http://127.0.0.1:8000  (docs at /docs)
+(cd backend && uvicorn app.main:app --reload)   # API  http://127.0.0.1:8000  (docs at /docs)
 cd frontend && npm run dev                 # UI   http://localhost:5173  (proxies /api to :8000)
 # or everything in containers:
-docker compose up --build                  # UI http://localhost:8080 · API http://localhost:8000   (models mounted from ./models)
+docker compose up --build                  # UI http://localhost:8080 · API http://localhost:8000   (models mounted from ./backend/models)
+# or run each side alone:  docker build -t triguard-backend backend  ·  docker build -t triguard-frontend frontend
 ```
 Environment variables: `TRIGUARD_DB_URL`, `TRIGUARD_CORS`, `TRIGUARD_RATE_LIMIT`, `TRIGUARD_TIMEOUT_S`, `TRIGUARD_LIVE_CHECKS` (0 disables WHOIS/TLS),
 `TRIGUARD_OCR_BACKEND` (auto|easyocr|tesseract). Deployment on free tiers: [docs/deploy.md](docs/deploy.md).
 
 ## Training / reproduction steps
 
-1. **Data** → `data/raw/`: `fake_job_postings.csv` (Kaggle "Real / Fake Job Posting Prediction"), optional `custom_text.csv` (template in `data/raw/custom_text_template.csv`),
-   `urls/*.csv` (PhishTank / Kaggle malicious_phish), real images in `data/images/{scam,genuine}/`, aligned cases in `data/aligned/aligned.csv` ([format](data/aligned/README.md)).
-   Missing pieces are replaced by clearly-marked `SYNTHETIC_*` data so everything still runs.
+1. **Data** → `backend/data/raw/`: `fake_job_postings.csv` (Kaggle "Real / Fake Job Posting Prediction"), optional `custom_text.csv` (template in `backend/data/raw/custom_text_template.csv`),
+   `urls/*.csv` (PhishTank / Kaggle malicious_phish), real images in `backend/data/images/{scam,genuine}/`, aligned cases in `backend/data/aligned/aligned.csv` ([format](backend/data/aligned/README.md)).
+   (Run all commands in steps 2–5 from `backend/`.) Missing pieces are replaced by clearly-marked `SYNTHETIC_*` data so everything still runs.
 2. **Prepare**: `python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images`
    (dedupe *before* stratified 70/15/15 split, seed 42).
 3. **Train**: `python -m ml.text.baselines` (TF-IDF+LR and Bi-LSTM reproduction) · `python -m ml.url.train` (LightGBM) ·
    `python -m ml.fusion.train_fuser` (meta-classifier; only installed when trained on a real `aligned.csv`).
-4. **GPU models (Colab)**: run `ml/notebooks/text_distilbert_colab.ipynb` → unzip into `models/text_distilbert/`; run `ml/notebooks/image_clip_colab.ipynb` → `models/image_clip/`.
+4. **GPU models (Colab)**: run `backend/ml/notebooks/text_distilbert_colab.ipynb` → unzip into `backend/models/text_distilbert/`; run `backend/ml/notebooks/image_clip_colab.ipynb` → `backend/models/image_clip/`.
    They are picked up automatically; nothing else changes.
-5. **Evaluate**: `python -m ml.image.compare_ocr && python -m reports.evaluate_all [--with-bilstm-cv]` → [reports/RESULTS.md](reports/RESULTS.md), `reports/error_analysis.md`, `reports/figures/`.
+5. **Evaluate**: `python -m ml.image.compare_ocr && python -m reports.evaluate_all [--with-bilstm-cv]` → [backend/reports/RESULTS.md](backend/reports/RESULTS.md), `backend/reports/error_analysis.md`, `backend/reports/figures/`.
 
 ## API
 
@@ -90,8 +95,8 @@ Errors always look like `{"error": {"code": "no_input", "message": "…", "reque
 ## Results
 
 The base paper reports Bi-LSTM F1 0.86 / recall 0.83 on EMSCAD (and an AUROC that appears to be computed from hard labels; our evaluation reports AUCs from probabilities only).
-[reports/RESULTS.md](reports/RESULTS.md) contains: 5-fold CV (mean ± std), base-paper comparison, ablation (text / URL / image / pairs / all three / + cross-modal),
-EMSCAD → Indian generalisation, OCR character-error-rate, calibration (ECE) and confusion matrices / PR curves, plus [error analysis](reports/error_analysis.md).
+[backend/reports/RESULTS.md](backend/reports/RESULTS.md) contains: 5-fold CV (mean ± std), base-paper comparison, ablation (text / URL / image / pairs / all three / + cross-modal),
+EMSCAD → Indian generalisation, OCR character-error-rate, calibration (ECE) and confusion matrices / PR curves, plus [error analysis](backend/reports/error_analysis.md).
 
 **Current numbers are from synthetic data and must not be quoted**; they are placeholders that prove the pipeline works end to end. Re-run step 5 after adding real data.
 
@@ -113,15 +118,17 @@ EMSCAD → Indian generalisation, OCR character-error-rate, calibration (ECE) an
 
 ## Repository layout
 ```
-ml/common     schemas, config, metrics, red-flag rules, calibration, plots, privacy, synthetic data
-ml/text|url|image|fusion   modality analyzers, training scripts, cross-modal checks, fuser, explanations
-ml/pipeline.py             TriGuardPipeline
-ml/notebooks               Colab notebooks (DistilBERT, CLIP)
-backend/app                FastAPI app (routes, db, security, errors)
-frontend                   React + Vite + TS + Tailwind (Vitest tests)
-reports                    evaluation scripts and generated reports/figures
-docs                       PHASES.md, deploy.md, demo_script.md
-tests                      pytest suite
+backend/                   self-contained API + ML project
+  app/                     FastAPI app (routes, db, security, errors)
+  ml/common|text|url|image|fusion   analyzers, training scripts, cross-modal checks, fuser, explanations
+  ml/pipeline.py           TriGuardPipeline
+  ml/notebooks/            Colab notebooks (DistilBERT, CLIP)
+  data/ models/ reports/   datasets (gitignored), saved models (gitignored), evaluation outputs
+  tests/ scripts/ demo_assets/  pytest suite, helper scripts, demo image
+  requirements.txt  pytest.ini  Dockerfile
+frontend/                  React + Vite + TS + Tailwind (Vitest tests, Dockerfile, nginx.conf)
+docs/                      PHASES.md, deploy.md, demo_script.md
+docker-compose.yml         runs both together
 ```
 
 ## Team

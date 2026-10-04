@@ -1,8 +1,8 @@
 # 5-minute demo script
 
-Setup (before the audience arrives): backend + frontend running (`uvicorn backend.app.main:app` and `npm run dev`, or `docker compose up`),
-browser at `http://localhost:5173`. The demo image is `docs/demo_assets/fake_offer_letter_with_qr.png`
-(regenerate with `python -m scripts.make_demo_assets`; it is marked "DEMO SAMPLE – NOT A REAL OFFER").
+Setup (before the audience arrives): backend + frontend running (`uvicorn app.main:app` (in `backend/`) and `npm run dev`, or `docker compose up`),
+browser at `http://localhost:5173`. The demo image is `backend/demo_assets/fake_offer_letter_with_qr.png`
+(from `backend/`: `python -m scripts.make_demo_assets`; it is marked "DEMO SAMPLE – NOT A REAL OFFER").
 
 > **Honest status note.** The outputs below were recorded on 2026-10-04 with the *stand-in models trained on SYNTHETIC data*.
 > Cases 1–3 behave as intended; case 4 (genuine) currently comes out **Suspicious (~53%)** because the synthetic-trained text model is
@@ -44,7 +44,7 @@ Point out: no red flags, negation-aware rules ("no fee at any stage" does not tr
 
 ## 4:30 – Close (30 s)
 Show **History** (anonymised) and **How it works**; mention privacy (images never stored, PII masked), calibrated scores,
-and the evaluation in `reports/RESULTS.md` (ablation: text vs URL vs image vs combinations, cross-modal checks).
+and the evaluation in `backend/reports/RESULTS.md` (ablation: text vs URL vs image vs combinations, cross-modal checks).
 Safety message: never pay; verify on the official careers page; report at cybercrime.gov.in / 1930.
 
 ## Backup plan

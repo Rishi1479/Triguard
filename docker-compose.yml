@@ -1,11 +1,11 @@
 # docker compose up --build   ->  UI on http://localhost:8080, API on http://localhost:8000
 services:
   backend:
-    build: .
+    build: ./backend
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models:ro          # trained models (gitignored); missing models -> rule-based fallback
+      - ./backend/models:/app/models:ro          # trained models (gitignored); missing models -> rule-based fallback
       - triguard-db:/app/db              # SQLite history/feedback
       - easyocr-cache:/home/app/.EasyOCR # EasyOCR weights downloaded on first run
     environment:

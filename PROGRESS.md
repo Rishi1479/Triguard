@@ -1,5 +1,9 @@
 # PROGRESS
 
+> **Layout change (after Phase 10):** the repo is now split into two self-contained folders, `backend/` and `frontend/`.
+> Everything that was at the repo root (`ml/`, `tests/`, `reports/`, `scripts/`, `data/`, `models/`, `requirements.txt`, `pytest.ini`, `Dockerfile`, `.venv`) now lives in `backend/`;
+> `backend/app/` is the FastAPI package (import `app.*`, no longer `backend.app.*`). Run all Python commands from `backend/`. Older entries below use the pre-split paths.
+
 ## WAITING FOR USER (final, consolidated)
 Everything below currently runs on SYNTHETIC stand-ins (files prefixed `SYNTHETIC_`, flag files `data/processed/SYNTHETIC_*.flag`). Do these in order:
 

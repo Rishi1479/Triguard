@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.app.settings import Settings
+from app.main import create_app
+from app.settings import Settings
 
 
 def test_health_without_pipeline_loaded():

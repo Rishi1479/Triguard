@@ -1,4 +1,4 @@
-"""Create the demo offer-letter image (fake letter with a QR code) used in docs/demo_script.md.
+"""Create the demo offer-letter image (fake letter with a QR code) used in docs/demo_script.md (repo root).
 
 The image carries a visible "DEMO SAMPLE – NOT A REAL OFFER" footer. Run: python -m scripts.make_demo_assets
 """
@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from ml.common import config
 from ml.image import synth_letters
 
-OUT = config.ROOT_DIR / "docs" / "demo_assets" / "fake_offer_letter_with_qr.png"
+OUT = config.ROOT_DIR / "demo_assets" / "fake_offer_letter_with_qr.png"
 QR_URL = "http://tcs-hiring.online/pay-registration"
 QR_SIZE = 220
 

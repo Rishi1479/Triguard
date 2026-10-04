@@ -7,8 +7,8 @@ Free-tier limits change often — check each provider's current limits before yo
 > `TRIGUARD_OCR_BACKEND=tesseract` — Tesseract is installed in the image and is much lighter (PyTorch is still loaded for the text models).
 
 ## 0. Before you deploy
-1. Train/export models and keep them out of git (`models/` is gitignored): `python -m ml.text.baselines`, `python -m ml.url.train`,
-   `python -m ml.fusion.train_fuser`, plus the Colab models (`models/text_distilbert/`, `models/image_clip/`).
+1. Train/export models and keep them out of git (`backend/models/` is gitignored; run from `backend/`): `python -m ml.text.baselines`, `python -m ml.url.train`,
+   `python -m ml.fusion.train_fuser`, plus the Colab models (`backend/models/text_distilbert/`, `backend/models/image_clip/`).
 2. Decide how the container gets `models/`: mount a volume (compose/VPS), or copy the folder into the deployment repo with Git LFS.
 3. `docker compose up --build` locally first (UI http://localhost:8080, API http://localhost:8000/health).
    (The Dockerfiles were written but could not be built in the authoring environment because the Docker daemon was not running.)
@@ -23,13 +23,13 @@ Free-tier limits change often — check each provider's current limits before yo
    app_port: 8000
    ---
    ```
-3. Push the repo contents (root `Dockerfile`, `ml/`, `backend/`, `data/company_domains.csv`, `requirements.txt`) and your `models/` folder (Git LFS) to the Space.
+3. Push the repo contents (the contents of `backend/`: `Dockerfile`, `ml/`, `app/`, `data/company_domains.csv`, `requirements.txt`) and your `models/` folder (Git LFS) to the Space.
 4. Space → Settings → Variables: `TRIGUARD_CORS=https://<your-frontend-domain>`, `TRIGUARD_LIVE_CHECKS=1`, optionally `TRIGUARD_OCR_BACKEND=tesseract`.
    Note Spaces' disk is ephemeral: history/feedback in SQLite is lost on restart (acceptable for a demo).
 5. API base URL: `https://<user>-<space>.hf.space`.
 
 ## 1b. Backend on Render
-1. New → **Web Service** → connect the repo → Runtime **Docker**, health-check path `/health`.
+1. New → **Web Service** → connect the repo → set **Root Directory** `backend`, Runtime **Docker**, health-check path `/health`.
 2. Environment: `TRIGUARD_CORS=https://<your-frontend-domain>`; optionally a disk mounted at `/app/db` for SQLite.
 3. Free instances sleep when idle, so the first request can take a minute (model loading).
 

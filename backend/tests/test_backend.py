@@ -6,8 +6,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.main import create_app
-from backend.app.settings import Settings
+from app.main import create_app
+from app.settings import Settings
 from ml.common.schemas import FinalResult, ModalityResult, RedFlag
 from ml.pipeline import NoUsableInputError
 

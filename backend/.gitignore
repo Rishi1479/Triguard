@@ -1,0 +1,21 @@
+# Data & models (large / licensed / generated)
+data/raw/
+data/processed/
+data/images/
+data/aligned/*
+!data/aligned/aligned_template.csv
+!data/aligned/README.md
+models/
+!data/**/.gitkeep
+!models/.gitkeep
+*.db
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.env
+.env.*
