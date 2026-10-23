@@ -16,6 +16,7 @@ Analyzer model in use: `text_hybrid_lgbm` (threshold 0.120, tuned on validation)
 | Model | precision | recall | f1 | pr_auc | roc_auc | mcc | accuracy | ECE |
 |---|---|---|---|---|---|---|---|---|
 | tfidf_lr | 1.000 | 0.956 | 0.977 | 1.000 | 1.000 | 0.974 | 0.994 | 0.010 |
+| hybrid_lgbm | 0.957 | 0.978 | 0.967 | 0.997 | 1.000 | 0.962 | 0.991 | 0.033 |
 | bilstm | 1.000 | 0.956 | 0.977 | 0.995 | 0.999 | 0.974 | 0.994 | 0.002 |
 
 ## Comparison with the base paper (Pillai 2023, Bi-LSTM, EMSCAD)
@@ -24,7 +25,8 @@ Analyzer model in use: `text_hybrid_lgbm` (threshold 0.120, tuned on validation)
 |---|---|---|
 | Pillai (reported) | 0.86 | 0.83 |
 | ours: bilstm | 0.977 | 0.956 |
+| ours: hybrid_lgbm | 0.967 | 0.978 |
 | ours: tfidf_lr | 0.977 | 0.956 |
 | ours: DistilBERT | _pending Colab training_ | _pending_ |
 
-Note: the base paper's AUROC appears to be computed from hard labels; all AUCs here use probabilities.
+Note: the base paper's AUROC is a hard-label AUROC — `(1+TPR-FPR)/2` reproduces it from its own confusion matrices (see RESULTS.md section 2b). All AUCs here use probabilities.

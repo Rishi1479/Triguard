@@ -66,7 +66,24 @@ LIME_NUM_SAMPLES: int = 300
 LIME_TOP_WORDS: int = 8
 # Probability boost from rule flags: p' = 1 - (1-p) * prod(1 - w[severity]).
 RULE_BOOST: dict[str, float] = {"high": 0.30, "medium": 0.10, "low": 0.02}
-BASE_PAPER: dict[str, float] = {"f1": 0.86, "recall": 0.83}  # Pillai (2023) Bi-LSTM, EMSCAD
+# --- Base paper -------------------------------------------------------------------
+# Pillai (2023), "Detecting Fake Job Postings Using Bidirectional LSTM", IRJMETS 5(3), 3883-3890.
+# Every figure below is as printed in the paper's Tables 2 and 3; `tp`/`tn` come from its confusion
+# matrices (Figures 5 and 6). ml/common/base_paper.py reconstructs the full matrices from these and
+# checks them against the reported accuracy and AUROC -- which is how the hard-label AUROC claim in
+# reports/RESULTS.md section 2 is derived rather than asserted.
+BASE_PAPER_DATASET: dict[str, int] = {"total": 17_880, "genuine": 16_244, "fake": 1_636}
+BASE_PAPER_TEST_N: int = 3_576  # "Out of the 3576 records in the test set"
+BASE_PAPER_MODELS: dict[str, dict[str, float]] = {
+    "Bi-LSTM": {"auroc": 0.91, "accuracy": 0.9871, "precision": 0.89, "recall": 0.83, "f1": 0.86,
+                "tp": 144, "tn": 3386},
+    "LightGBM": {"auroc": 0.83, "accuracy": 0.9818, "precision": 0.94, "recall": 0.66, "f1": 0.77,
+                 "tp": 115, "tn": 3396},
+    # Random Forest and Gradient Boosting have no published confusion matrix, so no tp/tn.
+    "Random Forest": {"auroc": 0.70, "accuracy": 0.9704, "precision": 0.97, "recall": 0.40, "f1": 0.57},
+    "Gradient Boosting": {"auroc": 0.68, "accuracy": 0.9667, "precision": 0.86, "recall": 0.37, "f1": 0.62},
+}
+BASE_PAPER: dict[str, float] = BASE_PAPER_MODELS["Bi-LSTM"]  # the model we are compared against
 
 # --- Behavioural (rule-derived) features -------------------------------------------
 # Rule firings are fed to the model as named numeric features instead of only boosting the

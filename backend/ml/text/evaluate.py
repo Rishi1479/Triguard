@@ -46,16 +46,19 @@ def run() -> str:
             lines.append(f"| {name} | {variant} | {fmt(score_set(an, df, rules)[1])} |")
     lines += ["", "## Baselines (from reports/text_baselines.json, EMSCAD test)", "",
               "| Model | " + " | ".join(COLS) + " | ECE |", "|---|" + "---|" * (len(COLS) + 1)]
-    for k in ("tfidf_lr", "bilstm"):
-        lines.append(f"| {k} | {fmt(base[k]['test'])} |")
+    for k in ("tfidf_lr", "hybrid_lgbm", "bilstm"):
+        if "test" in base.get(k, {}):
+            lines.append(f"| {k} | {fmt(base[k]['test'])} |")
     bp = config.BASE_PAPER
     lines += ["", "## Comparison with the base paper (Pillai 2023, Bi-LSTM, EMSCAD)", "",
               "| Model | F1 | Recall |", "|---|---|---|", f"| Pillai (reported) | {bp['f1']:.2f} | {bp['recall']:.2f} |"]
-    for k in ("bilstm", "tfidf_lr"):
-        t = base[k]["test"]
-        lines.append(f"| ours: {k} | {t['f1']:.3f} | {t['recall']:.3f} |")
+    for k in ("bilstm", "hybrid_lgbm", "tfidf_lr"):
+        if "test" in base.get(k, {}):
+            t = base[k]["test"]
+            lines.append(f"| ours: {k} | {t['f1']:.3f} | {t['recall']:.3f} |")
     lines += ["| ours: DistilBERT | _pending Colab training_ | _pending_ |", "",
-              "Note: the base paper's AUROC appears to be computed from hard labels; all AUCs here use probabilities."]
+              "Note: the base paper's AUROC is a hard-label AUROC — `(1+TPR-FPR)/2` reproduces it from its "
+              "own confusion matrices (see RESULTS.md section 2b). All AUCs here use probabilities."]
     out = "\n".join(lines) + "\n"
     config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     (config.REPORTS_DIR / "text_results.md").write_text(out)

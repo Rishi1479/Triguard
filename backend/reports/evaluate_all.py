@@ -17,6 +17,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from ml.common import config
+from ml.common import base_paper
 from ml.common.bootstrap import CI_METRICS, bootstrap_metrics, format_ci
 from ml.common.calibration import PlattCalibrator
 from ml.common.metrics import evaluate, expected_calibration_error, find_best_threshold
@@ -104,7 +105,10 @@ def base_paper_table(splits: dict[str, pd.DataFrame]) -> tuple[str, dict]:
     """Reported Bi-LSTM vs our reproduction vs TF-IDF+LR vs DistilBERT; AUROC from probabilities and from hard labels."""
     test = splits["test"]
     y = test["label"].to_numpy()
-    rows, extra = [["Pillai (2023) – reported Bi-LSTM", config.BASE_PAPER["f1"], config.BASE_PAPER["recall"], "n/a", "n/a", "n/a"]], {}
+    rows, extra = [], {}
+    for name, st in config.BASE_PAPER_MODELS.items():
+        label = f"Pillai (2023) – {name}" + (" ★" if name == "Bi-LSTM" else "")
+        rows.append([label, st["f1"], st["recall"], "n/a†", st["auroc"], "n/a"])
     folder = config.MODELS_DIR / "text_bilstm"
     cands = {}
     if (folder / "model.pt").exists():
@@ -123,6 +127,64 @@ def base_paper_table(splits: dict[str, pd.DataFrame]) -> tuple[str, dict]:
         rows.append(["Ours: DistilBERT", "pending (Colab)", "pending", "pending", "pending", "pending"])
     table = md_table(["Model", "F1", "Recall", "ROC-AUC (probabilities)", "ROC-AUC (hard labels)", "PR-AUC"], rows)
     return table, extra
+
+
+def base_paper_derivation() -> tuple[str, dict]:
+    """Show, rather than assert, that the base paper's AUROC comes from hard labels.
+
+    Reconstructs each published confusion matrix and recomputes accuracy and the
+    single-operating-point AUC, so a reader can check the claim instead of taking it on trust.
+    """
+    recs = base_paper.reconcile_all()
+    if not recs:
+        return "_no published confusion matrix to reconcile._", {}
+
+    rows = [[r.name, f"{r.tp}/{r.tn}/{r.fp}/{r.fn}", r.positives, f"{100 * r.positive_rate:.2f}%",
+             f"{r.accuracy:.4f}", f"{r.accuracy_reported:.4f}",
+             f"{r.hard_label_auc:.4f}", f"{r.auroc_reported:.2f}",
+             "yes" if r.auc_matches_hard_labels else "no"]
+            for r in recs]
+    table = md_table(["Model", "TP/TN/FP/FN", "positives in test", "positive rate",
+                      "accuracy (recomputed)", "accuracy (reported)",
+                      "(1+TPR−FPR)/2", "AUROC (reported)", "match"], rows)
+
+    expected = base_paper.expected_fakes_in_test()
+    rate = base_paper.dataset_positive_rate()
+    # Quote the benchmark model (the Bi-LSTM) rather than whichever happens to be lowest.
+    headline = next((r for r in recs if r.name == "Bi-LSTM"), recs[0])
+    lines = [
+        table, "",
+        "**(a) The reported AUROC is a hard-label AUROC.** The area under an ROC curve drawn through "
+        "a single operating point is `(1 + TPR − FPR) / 2`. That expression reproduces the published "
+        "AUROC for every model with a confusion matrix, which an AUROC integrated over probability "
+        "thresholds would not. Our own AUROCs are therefore reported in both forms above — the "
+        "columns are not comparable.", "",
+        f"**(b) The test split is not stratified.** EMSCAD is {100 * rate:.2f}% fraudulent "
+        f"({config.BASE_PAPER_DATASET['fake']:,} of {config.BASE_PAPER_DATASET['total']:,}), so a "
+        f"{config.BASE_PAPER_TEST_N:,}-row test split should hold about {expected:.0f} fake postings. "
+        f"The reconstructed matrices contain about {recs[0].positives}, roughly half, making the test "
+        "set easier than the deployment distribution. This project deduplicates before splitting and "
+        "splits with stratification (`ml/common/textprep.py`).", "",
+        f"**(c) Accuracy sits close to the majority-class floor.** For the {headline.name}, at a "
+        f"{100 * headline.positive_rate:.2f}% positive rate, always predicting \"genuine\" already "
+        f"scores {100 * headline.majority_baseline:.2f}% against its reported "
+        f"{100 * headline.accuracy_reported:.2f}% — a margin of "
+        f"{100 * (headline.accuracy_reported - headline.majority_baseline):.2f} points. Accuracy is "
+        "reported here only as a secondary metric; PR-AUC and MCC are the headline numbers.",
+    ]
+    disc = base_paper.f1_discrepancies()
+    if disc:
+        items = "; ".join(f"{n}: reported {rep:.2f}, implied {imp:.2f}" for n, rep, imp in disc)
+        lines += ["", f"**(d) An arithmetic slip in the paper's Table 3.** The published F1 does not "
+                      f"match the published precision and recall — {items}."]
+    out = {r.name: {"tp": r.tp, "tn": r.tn, "fp": r.fp, "fn": r.fn, "positives": r.positives,
+                    "positive_rate": r.positive_rate, "accuracy_recomputed": r.accuracy,
+                    "hard_label_auc": r.hard_label_auc, "auroc_reported": r.auroc_reported,
+                    "majority_baseline": r.majority_baseline,
+                    "auc_matches_hard_labels": r.auc_matches_hard_labels} for r in recs}
+    out["expected_fakes_if_stratified"] = expected
+    out["f1_discrepancies"] = disc
+    return "\n".join(lines), out
 
 
 # ------------------------------------------------------------------------------- 3. ablation
@@ -357,6 +419,7 @@ def run(with_bilstm_cv: bool = False) -> str:
           **cv_url(all_url["url"].tolist(), all_url["label"].to_numpy())}
     res["cv"] = cv
     paper_tbl, res["base_paper"] = base_paper_table(splits)
+    deriv_tbl, res["base_paper_derivation"] = base_paper_derivation()
     cases, aligned_synth = load_cases()
     abl_rows, scores, y_al, abl_ci_rows = ablation(cases)
     gen_tbl, res["generalisation"] = generalisation(an, splits, custom)
@@ -385,7 +448,13 @@ def run(with_bilstm_cv: bool = False) -> str:
            md_table(["Model", *METRICS], cv_rows), "",
            "Thresholds and Platt calibration are fitted inside each fold on a 15% validation split; vectorizers/tokenizers fit on the training part only.", "",
            f"## 2. Comparison with the base paper (EMSCAD test split){tag(syn['text'])}", "", paper_tbl, "",
-           "The base paper reports AUROC apparently computed from hard (0/1) predictions; the two AUROC columns show how much that choice changes the number for our models.", "",
+           "★ = the model this project is benchmarked against. † the paper publishes no "
+           "probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our "
+           "models both forms are shown so like is compared with like.", "",
+           "### 2b. Reconciling the base paper's reported figures", "", deriv_tbl, "",
+           "Computed by `ml/common/base_paper.py` from the figures in the paper's Tables 2–3 and "
+           "Figures 5–6, and covered by `tests/test_base_paper.py` — the derivation can be re-run, "
+           "not just read.", "",
            f"## 3. Ablation on the aligned multimodal set (out-of-fold, n={len(cases)}){tag(syn['aligned'])}", "",
            md_table(["Configuration", "Coverage", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC"], abl_rows), "",
            "Coverage = share of cases where the configuration has at least one input. Thresholds are tuned on each fold's training part. ![PR curves](figures/pr_ablation.png)", "",

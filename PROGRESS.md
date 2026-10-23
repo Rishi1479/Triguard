@@ -549,3 +549,59 @@ unchanged by this work.
   home in the UI — worth relocating before the viva.
 - Charts have hover/focus affordances but no floating tooltip; with ≤8 marks every value is
   direct-labelled or in the table view instead.
+
+## Base-paper reconciliation (2026-10-23)
+
+Encoded the full figures from Pillai (2023) and turned the "their AUROC looks like a hard-label
+AUROC" aside into a derivation that can be re-run.
+
+### What was added
+- `config.BASE_PAPER_MODELS` — all four of the paper's models (Bi-LSTM, LightGBM, Random Forest,
+  Gradient Boosting) with AUROC, accuracy, precision, recall, F1, plus TP/TN for the two that
+  published a confusion matrix. `config.BASE_PAPER` is now an alias for the Bi-LSTM row, so existing
+  `BASE_PAPER["f1"]` / `["recall"]` lookups are unchanged.
+- `ml/common/base_paper.py` (new) — reconstructs each confusion matrix from TP, TN, precision and
+  recall, then recomputes accuracy and the single-operating-point AUC.
+- `reports/evaluate_all.py` — section 2 now lists all four of their models; new **section 2b**
+  prints the reconciliation table and the four findings below.
+- `tests/test_base_paper.py` (new, 17 tests) — pins every claim to the published figures.
+
+### The findings (all reproduced by the code)
+
+| Model | TP/TN/FP/FN | positives in test | (1+TPR−FPR)/2 | reported AUROC |
+|---|---|---|---|---|
+| Bi-LSTM | 144/3386/18/29 | 173 (4.84%) | **0.9135** | **0.91** |
+| LightGBM | 115/3396/7/59 | 174 (4.87%) | **0.8294** | **0.83** |
+
+**(a) Their AUROC is a hard-label AUROC.** `(1 + TPR − FPR) / 2` — the area under an ROC curve
+through a *single* operating point — reproduces the published AUROC for both models with a
+confusion matrix, to two decimals. An AUROC integrated over probability thresholds would not. Our
+RESULTS.md reports both forms so the columns are comparable.
+
+**(b) Their test split is not stratified.** EMSCAD is 9.15% fraudulent, so a 3,576-row test split
+should hold ~327 fakes; the reconstructed matrices hold ~173. Their test set is roughly half as
+positive as the real distribution, making it easier than deployment.
+
+**(c) Accuracy sits 3.52 points above the majority-class floor.** At a 4.84% positive rate,
+predicting "always genuine" scores 95.19% against their reported 98.71%.
+
+**(d) An arithmetic slip in their Table 3.** Gradient Boosting reports F1 0.62, but P=0.86 and
+R=0.37 imply 0.52. The other three rows are self-consistent.
+
+Also noted (not encoded): the paper's text cites "Zhang et al. (2021) applied deep learning models
+to detect fake job postings", but reference [8] is Jensen, Zhang & Plank, *De-identification of
+Privacy-related Entities in Job Postings* — a privacy paper, not a detection one.
+
+### Why this matters for the report
+The paper's Discussion names four areas of future work, and this project addresses all four:
+class imbalance (class weights + validation-tuned thresholds), **transfer learning and domain
+adaptation** (section 4b prior-shift correction — their explicitly unsolved problem), interpretability
+(SHAP/LIME + named behavioural features), and ethical concerns (abstention, PII masking). On top of
+that: multimodal fusion, adversarial robustness and calibration, none of which the paper attempts.
+
+**Tests**: backend 375 passed (17 new). Reports regenerated.
+
+### Known issue
+These comparisons still run against *our* synthetic EMSCAD stand-in, so the "Ours:" rows in section 2
+are not yet a real comparison. Section 2b is unaffected — it reconciles the paper's own published
+figures and needs no data at all.

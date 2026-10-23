@@ -61,6 +61,42 @@
       "roc_auc_hard_labels": 0.9855555555555556
     }
   },
+  "base_paper_derivation": {
+    "Bi-LSTM": {
+      "tp": 144,
+      "tn": 3386,
+      "fp": 18,
+      "fn": 29,
+      "positives": 173,
+      "positive_rate": 0.04837807606263982,
+      "accuracy_recomputed": 0.9871364653243848,
+      "hard_label_auc": 0.9135410228021437,
+      "auroc_reported": 0.91,
+      "majority_baseline": 0.9519015659955258,
+      "auc_matches_hard_labels": true
+    },
+    "LightGBM": {
+      "tp": 115,
+      "tn": 3396,
+      "fp": 7,
+      "fn": 59,
+      "positives": 174,
+      "positive_rate": 0.04865771812080537,
+      "accuracy_recomputed": 0.9818232662192393,
+      "hard_label_auc": 0.8294312658539963,
+      "auroc_reported": 0.83,
+      "majority_baseline": 0.9516219239373602,
+      "auc_matches_hard_labels": true
+    },
+    "expected_fakes_if_stratified": 327.2,
+    "f1_discrepancies": [
+      [
+        "Gradient Boosting",
+        0.62,
+        0.5173983739837398
+      ]
+    ]
+  },
   "generalisation": {
     "EMSCAD test / model only": {
       "threshold": 0.12,

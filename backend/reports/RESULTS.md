@@ -15,12 +15,32 @@ Thresholds and Platt calibration are fitted inside each fold on a 15% validation
 
 | Model | F1 | Recall | ROC-AUC (probabilities) | ROC-AUC (hard labels) | PR-AUC |
 |---|---|---|---|---|---|
-| Pillai (2023) – reported Bi-LSTM | 0.860 | 0.830 | n/a | n/a | n/a |
+| Pillai (2023) – Bi-LSTM ★ | 0.860 | 0.830 | n/a† | 0.910 | n/a |
+| Pillai (2023) – LightGBM | 0.770 | 0.660 | n/a† | 0.830 | n/a |
+| Pillai (2023) – Random Forest | 0.570 | 0.400 | n/a† | 0.700 | n/a |
+| Pillai (2023) – Gradient Boosting | 0.620 | 0.370 | n/a† | 0.680 | n/a |
 | Ours: Bi-LSTM reproduction | 0.977 | 0.956 | 0.999 | 0.978 | 0.995 |
 | Ours: text_hybrid_lgbm | 0.967 | 0.978 | 1.000 | 0.986 | 0.997 |
 | Ours: DistilBERT | pending (Colab) | pending | pending | pending | pending |
 
-The base paper reports AUROC apparently computed from hard (0/1) predictions; the two AUROC columns show how much that choice changes the number for our models.
+★ = the model this project is benchmarked against. † the paper publishes no probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our models both forms are shown so like is compared with like.
+
+### 2b. Reconciling the base paper's reported figures
+
+| Model | TP/TN/FP/FN | positives in test | positive rate | accuracy (recomputed) | accuracy (reported) | (1+TPR−FPR)/2 | AUROC (reported) | match |
+|---|---|---|---|---|---|---|---|---|
+| Bi-LSTM | 144/3386/18/29 | 173 | 4.84% | 0.9871 | 0.9871 | 0.9135 | 0.91 | yes |
+| LightGBM | 115/3396/7/59 | 174 | 4.87% | 0.9818 | 0.9818 | 0.8294 | 0.83 | yes |
+
+**(a) The reported AUROC is a hard-label AUROC.** The area under an ROC curve drawn through a single operating point is `(1 + TPR − FPR) / 2`. That expression reproduces the published AUROC for every model with a confusion matrix, which an AUROC integrated over probability thresholds would not. Our own AUROCs are therefore reported in both forms above — the columns are not comparable.
+
+**(b) The test split is not stratified.** EMSCAD is 9.15% fraudulent (1,636 of 17,880), so a 3,576-row test split should hold about 327 fake postings. The reconstructed matrices contain about 173, roughly half, making the test set easier than the deployment distribution. This project deduplicates before splitting and splits with stratification (`ml/common/textprep.py`).
+
+**(c) Accuracy sits close to the majority-class floor.** For the Bi-LSTM, at a 4.84% positive rate, always predicting "genuine" already scores 95.19% against its reported 98.71% — a margin of 3.52 points. Accuracy is reported here only as a secondary metric; PR-AUC and MCC are the headline numbers.
+
+**(d) An arithmetic slip in the paper's Table 3.** The published F1 does not match the published precision and recall — Gradient Boosting: reported 0.62, implied 0.52.
+
+Computed by `ml/common/base_paper.py` from the figures in the paper's Tables 2–3 and Figures 5–6, and covered by `tests/test_base_paper.py` — the derivation can be re-run, not just read.
 
 ## 3. Ablation on the aligned multimodal set (out-of-fold, n=240) 🧪 SYNTHETIC
 
