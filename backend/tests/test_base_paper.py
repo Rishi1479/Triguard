@@ -1,6 +1,6 @@
 """Tests for the base-paper reconciliation.
 
-These pin the three claims made in reports/RESULTS.md section 2b against the figures printed in
+These pin the claims made in reports/RESULTS.md section 2b against the figures printed in
 Pillai (2023). If the recorded figures in config are ever edited, these fail rather than letting the
 report quietly assert something the numbers no longer support.
 """
@@ -10,6 +10,7 @@ import pytest
 
 from ml.common import config
 from ml.common.base_paper import (
+    actual_positive_rate,
     dataset_positive_rate,
     expected_fakes_in_test,
     f1_discrepancies,
@@ -70,22 +71,34 @@ def test_every_reconciled_model_supports_the_claim():
     assert all(r.auc_matches_hard_labels for r in recs)
 
 
-# ----------------------------------------------------------------- claim (b): split not stratified
-def test_test_split_holds_about_half_the_fakes_stratification_would_give():
-    expected = expected_fakes_in_test()
-    actual = reconstruct("Bi-LSTM").positives
-    assert expected == pytest.approx(327, abs=1)
-    assert actual < 0.6 * expected  # ~173 vs ~327
+# ----------------------------------------------------------------- claim (b): paper misstates the dataset
+def test_paper_states_a_positive_rate_the_dataset_does_not_have():
+    assert dataset_positive_rate() == pytest.approx(0.0915, abs=5e-4)  # 1,636 / 17,880 as printed
+    assert actual_positive_rate() == pytest.approx(0.0484, abs=5e-4)  # 866 / 17,880 as counted
 
 
-def test_dataset_positive_rate_matches_the_paper():
-    assert dataset_positive_rate() == pytest.approx(0.0915, abs=5e-4)
-
-
-def test_reconstructed_positive_rate_is_far_below_the_dataset_rate():
+def test_test_split_matches_the_real_class_balance():
+    """173 positives in 3,576 rows is what a representative split of the real dataset holds."""
     r = reconstruct("Bi-LSTM")
-    assert r.positive_rate == pytest.approx(0.0484, abs=5e-4)
-    assert r.positive_rate < dataset_positive_rate() / 1.5
+    assert expected_fakes_in_test() == pytest.approx(173.2, abs=0.1)
+    assert abs(r.positives - expected_fakes_in_test()) < 2
+    assert r.positive_rate == pytest.approx(actual_positive_rate(), abs=5e-4)
+
+
+def test_expected_fakes_under_the_papers_stated_counts():
+    assert expected_fakes_in_test(counts=config.BASE_PAPER_DATASET) == pytest.approx(327, abs=1)
+
+
+def test_actual_counts_match_the_dataset_when_present():
+    for name in config.EMSCAD_FILES:
+        f = config.RAW_DIR / name
+        if f.exists():
+            import pandas as pd
+            from ml.text.prepare_emscad import to_binary
+            y = to_binary(pd.read_csv(f, usecols=["fraudulent"])["fraudulent"])
+            assert {"total": len(y), "genuine": int((y == 0).sum()), "fake": int(y.sum())} == config.EMSCAD_ACTUAL
+            return
+    pytest.skip("real EMSCAD CSV not present")
 
 
 # ----------------------------------------------------------------- claim (c): accuracy floor
@@ -118,5 +131,5 @@ def test_base_paper_alias_points_at_the_bilstm():
 
 
 def test_dataset_counts_are_internally_consistent():
-    d = config.BASE_PAPER_DATASET
-    assert d["genuine"] + d["fake"] == d["total"] == 17_880
+    for d in (config.BASE_PAPER_DATASET, config.EMSCAD_ACTUAL):
+        assert d["genuine"] + d["fake"] == d["total"] == 17_880

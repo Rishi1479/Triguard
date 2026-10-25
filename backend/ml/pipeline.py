@@ -31,9 +31,10 @@ class TriGuardPipeline:
     """End-to-end analyzer. Pass pre-built analyzers to override (tests) or let it build defaults."""
 
     def __init__(self, models_dir: Path | None = None, enable_live: bool = True, ocr_backend: str = "auto",
-                 text: TextAnalyzer | None = None, image: ImageAnalyzer | None = None,
-                 url: URLAnalyzer | None = None, fuser: Fuser | None = None) -> None:
-        self.text = text or TextAnalyzer(models_dir)
+                 text_model: str | None = None, text: TextAnalyzer | None = None,
+                 image: ImageAnalyzer | None = None, url: URLAnalyzer | None = None,
+                 fuser: Fuser | None = None) -> None:
+        self.text = text or TextAnalyzer(models_dir, prefer=text_model)
         self.url = url or URLAnalyzer(models_dir, enable_live=enable_live)
         if image is None:
             from ml.image.ocr import get_engine

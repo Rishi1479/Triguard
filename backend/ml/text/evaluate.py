@@ -42,11 +42,13 @@ def run() -> str:
         if not f.exists():
             continue
         df = pd.read_csv(f)
+        if "source" in df.columns and (df["source"] == "SYNTHETIC").any():
+            name += " (SYNTHETIC)"
         for variant, rules in (("model only", False), ("model + rule boost", True)):
             lines.append(f"| {name} | {variant} | {fmt(score_set(an, df, rules)[1])} |")
     lines += ["", "## Baselines (from reports/text_baselines.json, EMSCAD test)", "",
               "| Model | " + " | ".join(COLS) + " | ECE |", "|---|" + "---|" * (len(COLS) + 1)]
-    for k in ("tfidf_lr", "hybrid_lgbm", "bilstm"):
+    for k in ("hybrid_lgbm", "tfidf_lr", "bilstm"):
         if "test" in base.get(k, {}):
             lines.append(f"| {k} | {fmt(base[k]['test'])} |")
     bp = config.BASE_PAPER
@@ -56,8 +58,7 @@ def run() -> str:
         if "test" in base.get(k, {}):
             t = base[k]["test"]
             lines.append(f"| ours: {k} | {t['f1']:.3f} | {t['recall']:.3f} |")
-    lines += ["| ours: DistilBERT | _pending Colab training_ | _pending_ |", "",
-              "Note: the base paper's AUROC is a hard-label AUROC — `(1+TPR-FPR)/2` reproduces it from its "
+    lines += ["", "Note: the base paper's AUROC is a hard-label AUROC — `(1+TPR-FPR)/2` reproduces it from its "
               "own confusion matrices (see RESULTS.md section 2b). All AUCs here use probabilities."]
     out = "\n".join(lines) + "\n"
     config.REPORTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -10,8 +10,11 @@ into something a reader can run:
    operating point is ``(1 + TPR - FPR) / 2``. For both models with a published matrix that
    expression reproduces the paper's AUROC to two decimals, which an AUROC integrated over
    probability thresholds would not.
-2. **The test split is not stratified.** EMSCAD is 9.15% fraudulent, so a 20% test split should hold
-   ~327 fake postings; the reconstructed matrices contain ~173.
+2. **The paper misstates its own dataset.** It reports 1,636 fake postings (9.15%); EMSCAD holds 866
+   (4.84%). The reconstructed test matrices hold ~173 positives in 3,576 rows -- exactly 4.84% -- so
+   the test split matches the real class balance and it is the 1,636 in the text that is wrong.
+   (An earlier version of this module read the gap the other way round, as an unstratified split,
+   because it trusted the paper's count.)
 3. **Accuracy is close to the majority-class floor.** At ~4.8% positives, predicting "never fake"
    already scores ~95.2%.
 
@@ -104,15 +107,21 @@ def reconstruct(name: str, stats: dict[str, float] | None = None,
     return Reconciliation(**{**rec.__dict__, "notes": notes})
 
 
-def expected_fakes_in_test(n: int = config.BASE_PAPER_TEST_N) -> float:
-    """Fake postings a *stratified* test split of ``n`` rows would contain."""
-    d = config.BASE_PAPER_DATASET
+def expected_fakes_in_test(n: int = config.BASE_PAPER_TEST_N, counts: dict[str, int] | None = None) -> float:
+    """Fake postings a representative test split of ``n`` rows would contain (default: real EMSCAD counts)."""
+    d = counts if counts is not None else config.EMSCAD_ACTUAL
     return n * d["fake"] / d["total"]
 
 
 def dataset_positive_rate() -> float:
     """Fraudulent share of the full EMSCAD dataset as the paper describes it."""
     d = config.BASE_PAPER_DATASET
+    return d["fake"] / d["total"]
+
+
+def actual_positive_rate() -> float:
+    """Fraudulent share of EMSCAD as counted from the dataset itself."""
+    d = config.EMSCAD_ACTUAL
     return d["fake"] / d["total"]
 
 

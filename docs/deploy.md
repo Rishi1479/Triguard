@@ -8,7 +8,7 @@ Free-tier limits change often — check each provider's current limits before yo
 
 ## 0. Before you deploy
 1. Train/export models and keep them out of git (`backend/models/` is gitignored; run from `backend/`): `python -m ml.text.baselines`, `python -m ml.url.train`,
-   `python -m ml.fusion.train_fuser`, plus the Colab models (`backend/models/text_distilbert/`, `backend/models/image_clip/`).
+   `python -m ml.fusion.train_fuser`, plus the Colab CLIP model (`backend/models/image_clip/`).
 2. Decide how the container gets `models/`: mount a volume (compose/VPS), or copy the folder into the deployment repo with Git LFS.
 3. `docker compose up --build` locally first (UI http://localhost:8080, API http://localhost:8000/health).
    (The Dockerfiles were written but could not be built in the authoring environment because the Docker daemon was not running.)

@@ -6,7 +6,7 @@ browser at `http://localhost:5173`. The demo image is `backend/demo_assets/fake_
 
 > **Honest status note.** The outputs below were recorded on 2026-10-04 with the *stand-in models trained on SYNTHETIC data*.
 > Cases 1–3 behave as intended; case 4 (genuine) currently comes out **Suspicious (~53%)** because the synthetic-trained text model is
-> over-confident outside its generated vocabulary. After training on real EMSCAD (and adding DistilBERT) re-run all four cases and update
+> over-confident outside its generated vocabulary. After training on real EMSCAD re-run all four cases and update
 > the "Recorded" lines before presenting. Expected behaviour for a good model is stated in each case.
 
 ## 0:00 – Pitch (30 s)

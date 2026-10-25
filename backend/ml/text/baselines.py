@@ -1,15 +1,23 @@
-"""Train and evaluate the text baselines: TF-IDF+LR and the base paper's Bi-LSTM reproduction.
+"""Train and evaluate the text models, one at a time or all together.
 
-Trains on text_train.csv, calibrates + tunes the threshold on text_val.csv, reports on text_test.csv
-(and the custom Indian set when present) -> reports/text_baselines.json. Artifacts -> models/.
+Models (artifacts -> models/text_<name>/): ``hybrid_lgbm``, ``tfidf_lr``, ``bilstm``. Each model trains on text_train.csv, is calibrated + threshold-tuned on text_val.csv and reported on
+text_test.csv (and the custom Indian set when present). Results are merged into
+reports/text_baselines.json, so training one model keeps the others' numbers.
+
+    python -m ml.text.baselines                       # everything
+    python -m ml.text.baselines --model hybrid_lgbm   # one model
+    python -m ml.text.baselines --model bilstm tfidf_lr  # several
 """
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from pathlib import Path
+from typing import Callable
 
 import joblib
+import numpy as np
 import pandas as pd
 
 from ml.common import config
@@ -19,6 +27,8 @@ from ml.common.metrics import evaluate, expected_calibration_error, find_best_th
 from ml.common.novelty import NoveltyDetector
 from ml.common.prior_shift import calibration_holdout, fit_transfer
 from ml.text.models import BiLSTMClassifier, TfidfLR, TfidfRulesLGBM
+
+Predict = Callable[[pd.DataFrame], np.ndarray]
 
 
 def load_splits() -> dict[str, pd.DataFrame]:
@@ -64,87 +74,144 @@ def domain_transfer_report(val_prob, val_y, target_prob, target_y) -> dict:
     }
 
 
-def report_for(name: str, predict, splits: dict[str, pd.DataFrame]) -> tuple[dict, PlattCalibrator, float]:
-    """Calibrate on val, tune the F1 threshold on val, evaluate on the held-out sets."""
-    val_raw = predict(splits["val"]["text"].tolist())
+def report_for(name: str, predict: Predict, splits: dict[str, pd.DataFrame]) -> tuple[dict, PlattCalibrator, float]:
+    """Calibrate on val, tune the F1 threshold on val, evaluate on the held-out sets.
+
+    ``predict`` maps a split DataFrame to raw P(scam).
+    """
+    val_raw = predict(splits["val"])
     cal = PlattCalibrator().fit(val_raw, splits["val"]["label"])
     val_p = cal.predict(val_raw)
     thr = find_best_threshold(splits["val"]["label"], val_p, "f1")
     res: dict = {"model": name, "threshold": thr}
     for split in ("test", "custom"):
         if split in splits:
-            p = cal.predict(predict(splits[split]["text"].tolist()))
-            res[split] = _with_ci(splits[split]["label"], p, thr)
+            res[split] = _with_ci(splits[split]["label"], cal.predict(predict(splits[split])), thr)
     if "custom" in splits:
-        cp = cal.predict(predict(splits["custom"]["text"].tolist()))
+        cp = cal.predict(predict(splits["custom"]))
         res["domain_transfer"] = domain_transfer_report(
             val_p, splits["val"]["label"].to_numpy(), cp, splits["custom"]["label"].to_numpy())
     return res, cal, thr
 
 
-def run(models_dir: Path = config.MODELS_DIR, reports_dir: Path = config.REPORTS_DIR) -> dict:
-    """Train both baselines, save artifacts and write the JSON report."""
-    splits = load_splits()
+def _texts(df: pd.DataFrame) -> list[str]:
+    return df["text"].tolist()
+
+
+def train_tfidf_lr(splits: dict[str, pd.DataFrame], models_dir: Path) -> dict:
+    """TF-IDF word+char -> balanced LogisticRegression -> models/text_tfidf_lr/."""
     train = splits["train"]
-    results: dict = {"synthetic": (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()}
+    lr = TfidfLR().fit(_texts(train), train["label"])
+    res, cal, thr = report_for("tfidf_lr", lambda df: lr.predict_proba(_texts(df)), splits)
+    folder = models_dir / "text_tfidf_lr"
+    folder.mkdir(parents=True, exist_ok=True)
+    joblib.dump({"model": lr, "calibrator": cal, "threshold": thr}, folder / "model.joblib")
+    return res
+
+
+def train_hybrid_lgbm(splits: dict[str, pd.DataFrame], models_dir: Path) -> dict:
+    """TF-IDF(SVD) + behavioural rule features -> LightGBM -> models/text_hybrid_lgbm/.
+
+    Rule signals become features the model can weigh, instead of a fixed post-hoc probability boost.
+    """
+    train = splits["train"]
+    if len(train) < config.HYBRID_MIN_TRAIN_ROWS:
+        return {"skipped": f"fewer than {config.HYBRID_MIN_TRAIN_ROWS} training rows"}
+    hy = TfidfRulesLGBM().fit(_texts(train), train["label"], _texts(splits["val"]), splits["val"]["label"])
+    res, cal, thr = report_for("hybrid_lgbm", lambda df: hy.predict_proba(_texts(df)), splits)
+    res["behavioural_importance"] = [{"feature": n, "gain": round(g, 2)} for n, g in hy.behavioural_importance(10)]
+    folder = models_dir / "text_hybrid_lgbm"
+    folder.mkdir(parents=True, exist_ok=True)
+    joblib.dump({"model": hy, "calibrator": cal, "threshold": thr}, folder / "model.joblib")
+    return res
+
+
+def train_bilstm(splits: dict[str, pd.DataFrame], models_dir: Path) -> dict:
+    """Text-only Bi-LSTM (the paper's text branch) -> models/text_bilstm/."""
+    train, val = splits["train"], splits["val"]
+    bl = BiLSTMClassifier().fit(_texts(train), train["label"], _texts(val), val["label"])
+    res, cal, thr = report_for("bilstm", lambda df: bl.predict_proba(_texts(df)), splits)
+    bl.save(models_dir / "text_bilstm")
+    joblib.dump({"calibrator": cal, "threshold": thr}, models_dir / "text_bilstm" / "calib.joblib")
+    return res
+
+
+MODELS: dict[str, Callable[[dict, Path], dict]] = {
+    "hybrid_lgbm": train_hybrid_lgbm, "tfidf_lr": train_tfidf_lr, "bilstm": train_bilstm,
+}
+
+
+def resolve(names: list[str] | None) -> list[str]:
+    """Expand ``all`` and drop a ``text_`` prefix; unknown names raise ValueError."""
+    out: list[str] = []
+    for n in names or ["all"]:
+        n = n.removeprefix("text_")
+        for g in list(MODELS) if n == "all" else [n]:
+            if g not in MODELS:
+                raise ValueError(f"unknown model {n!r}; choose from: all, {', '.join(MODELS)}")
+            if g not in out:
+                out.append(g)
+    return out
+
+
+def _previous(path: Path, synthetic: bool) -> dict:
+    """Earlier results to merge into, unless they came from the other kind of data (synthetic vs real)."""
+    if not path.exists():
+        return {}
+    old = json.loads(path.read_text())
+    return old if old.get("synthetic") == synthetic else {}
+
+
+def run(models: list[str] | None = None, models_dir: Path = config.MODELS_DIR,
+        reports_dir: Path = config.REPORTS_DIR) -> dict:
+    """Train ``models`` (default: all), save their artifacts and merge results into text_baselines.json."""
+    names = resolve(models)
+    splits = load_splits()
+    synthetic = (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()
+    out_file = reports_dir / "text_baselines.json"
+    results: dict = {**_previous(out_file, synthetic), "synthetic": synthetic}
 
     # Novelty guard, fit on the training split only. Lets the analyzer shrink scores toward the
     # prior on registers it has no training evidence for, instead of guessing confidently.
-    nov = NoveltyDetector().fit(train["text"].tolist())
+    nov = NoveltyDetector().fit(_texts(splits["train"]))
     if nov.enabled:
         nov.save(models_dir / config.NOVELTY_DIR_SUFFIX)
         results["novelty"] = {"threshold": nov.threshold, "vocab_size": len(nov.vocab),
                               "n_train": nov.n_train}
 
-    t0 = time.time()
-    lr = TfidfLR().fit(train["text"].tolist(), train["label"])
-    res, cal, thr = report_for("tfidf_lr", lr.predict_proba, splits)
-    res["train_seconds"] = round(time.time() - t0, 1)
-    results["tfidf_lr"] = res
-    folder = models_dir / "text_tfidf_lr"
-    folder.mkdir(parents=True, exist_ok=True)
-    joblib.dump({"model": lr, "calibrator": cal, "threshold": thr}, folder / "model.joblib")
-
-    # Hybrid: TF-IDF(SVD) + behavioural rule features -> LightGBM. Rule signals become features the
-    # model can weigh, instead of a fixed post-hoc probability boost.
-    if len(train) >= config.HYBRID_MIN_TRAIN_ROWS:
+    for name in names:
         t0 = time.time()
-        hy = TfidfRulesLGBM().fit(train["text"].tolist(), train["label"],
-                                  splits["val"]["text"].tolist(), splits["val"]["label"])
-        res, cal, thr = report_for("hybrid_lgbm", hy.predict_proba, splits)
+        res = MODELS[name](splits, models_dir)
         res["train_seconds"] = round(time.time() - t0, 1)
-        res["behavioural_importance"] = [{"feature": n, "gain": round(g, 2)}
-                                         for n, g in hy.behavioural_importance(10)]
-        results["hybrid_lgbm"] = res
-        folder = models_dir / "text_hybrid_lgbm"
-        folder.mkdir(parents=True, exist_ok=True)
-        joblib.dump({"model": hy, "calibrator": cal, "threshold": thr}, folder / "model.joblib")
-    else:
-        results["hybrid_lgbm"] = {"skipped": f"fewer than {config.HYBRID_MIN_TRAIN_ROWS} training rows"}
-
-    t0 = time.time()
-    bl = BiLSTMClassifier().fit(train["text"].tolist(), train["label"],
-                                splits["val"]["text"].tolist(), splits["val"]["label"])
-    res, cal, thr = report_for("bilstm", bl.predict_proba, splits)
-    res["train_seconds"] = round(time.time() - t0, 1)
-    results["bilstm"] = res
-    bl.save(models_dir / "text_bilstm")
-    joblib.dump({"calibrator": cal, "threshold": thr}, models_dir / "text_bilstm" / "calib.joblib")
+        results[name] = res
+        print(summary_line(name, res), flush=True)
 
     reports_dir.mkdir(parents=True, exist_ok=True)
-    (reports_dir / "text_baselines.json").write_text(json.dumps(results, indent=2))
+    out_file.write_text(json.dumps(results, indent=2))
     return results
 
 
+def summary_line(name: str, res: dict) -> str:
+    """One-line test summary for the console."""
+    if "test" not in res:
+        return f"{name}: {res.get('skipped', 'no test result')}"
+    t = res["test"]
+    line = (f"{name}: test F1={t['f1']:.3f} recall={t['recall']:.3f} PR-AUC={t['pr_auc']:.3f} "
+            f"ROC-AUC={t['roc_auc']:.3f} MCC={t['mcc']:.3f}  ({res['train_seconds']}s)")
+    dt = res.get("domain_transfer")
+    if dt:
+        line += (f"\n   target transfer ({dt['method']}): naive F1={dt['naive']['f1']:.3f} MCC={dt['naive']['mcc']:.3f}"
+                 f"  ->  adapted F1={dt['adapted']['f1']:.3f} MCC={dt['adapted']['mcc']:.3f}")
+    return line
+
+
 if __name__ == "__main__":
-    out = run()
-    for k in ("tfidf_lr", "hybrid_lgbm", "bilstm"):
-        if "test" not in out.get(k, {}):
-            continue
-        t = out[k]["test"]
-        print(f"{k}: test F1={t['f1']:.3f} recall={t['recall']:.3f} PR-AUC={t['pr_auc']:.3f} "
-              f"ROC-AUC={t['roc_auc']:.3f} MCC={t['mcc']:.3f}")
-        dt = out[k].get("domain_transfer")
-        if dt:
-            print(f"   target transfer ({dt['method']}): naive F1={dt['naive']['f1']:.3f} MCC={dt['naive']['mcc']:.3f}"
-                  f"  ->  adapted F1={dt['adapted']['f1']:.3f} MCC={dt['adapted']['mcc']:.3f}")
+    ap = argparse.ArgumentParser(description="Train TriGuard's text models, all or only the ones named.")
+    ap.add_argument("--model", nargs="+", default=["all"], metavar="NAME",
+                    help=f"all | {' | '.join(MODELS)} (default: all)")
+    args = ap.parse_args()
+    try:
+        selected = resolve(args.model)
+    except ValueError as exc:
+        ap.error(str(exc))
+    run(selected)

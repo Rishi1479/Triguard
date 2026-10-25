@@ -1,7 +1,6 @@
-"""TextAnalyzer: best available text model (DistilBERT > TF-IDF+LR > rules only) -> ModalityResult."""
+"""TextAnalyzer: chosen or best available text model (hybrid LightGBM > TF-IDF+LR > Bi-LSTM > rules only) -> ModalityResult."""
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -29,45 +28,6 @@ class _TfidfScorer:
         return self.calibrator.predict(self.model.predict_proba(texts))
 
 
-class _TransformerScorer:
-    """Wraps a HuggingFace sequence-classification folder exported by a Colab notebook.
-
-    Covers MuRIL, XLM-R and DistilBERT: the tokenizer and config travel with the folder, so the
-    only model-specific detail is that DistilBERT's ``forward()`` rejects ``token_type_ids``.
-    """
-
-    def __init__(self, folder: Path) -> None:
-        import torch
-        from transformers import AutoModelForSequenceClassification, AutoTokenizer
-
-        meta = json.loads((folder / "meta.json").read_text())
-        self.tok = AutoTokenizer.from_pretrained(folder)
-        self.model = AutoModelForSequenceClassification.from_pretrained(folder).eval()
-        self.max_len = int(meta.get("max_len", config.TRANSFORMER_MAX_LEN))
-        self.threshold = float(meta.get("threshold", config.DEFAULT_CLASS_THRESHOLD))
-        self.coef, self.intercept = meta.get("platt_coef"), meta.get("platt_intercept")
-        self.accepts_token_type = "distilbert" not in type(self.model).__name__.lower()
-        self._torch = torch
-
-    def predict_proba(self, texts: list[str]) -> np.ndarray:
-        """Softmax P(scam), Platt-scaled with the parameters fitted on validation in Colab."""
-        torch = self._torch
-        out = []
-        for i in range(0, len(texts), 16):
-            enc = self.tok(texts[i: i + 16], truncation=True, max_length=self.max_len, padding=True,
-                           return_tensors="pt")
-            if not self.accepts_token_type:
-                enc.pop("token_type_ids", None)
-            with torch.no_grad():
-                out.append(torch.softmax(self.model(**enc).logits, dim=-1)[:, 1].numpy())
-        p = np.concatenate(out)
-        if self.coef is None:
-            return p
-        clipped = np.clip(p, config.PROB_EPS, 1 - config.PROB_EPS)
-        z = np.log(clipped / (1 - clipped))
-        return 1 / (1 + np.exp(-(self.coef * z + self.intercept)))
-
-
 class _HybridScorer:
     """Wraps models/text_hybrid_lgbm/model.joblib (TF-IDF+SVD+behavioural features, LightGBM)."""
 
@@ -84,13 +44,42 @@ class _HybridScorer:
         return self.model.behavioural_importance(top_k)
 
 
+class _BiLSTMScorer:
+    """Wraps models/text_bilstm/ (weights + vocab from ``BiLSTMClassifier.save``, Platt from ``calib.joblib``).
+
+    The base paper's architecture (Pillai 2023), served through the same interface as every other
+    scorer so a demo can be run on it directly instead of only comparing it offline in the report.
+    """
+
+    def __init__(self, folder: Path) -> None:
+        from ml.text.models import BiLSTMClassifier
+
+        blob = joblib.load(folder / "calib.joblib")
+        self.model = BiLSTMClassifier.load(folder)
+        self.calibrator, self.threshold = blob["calibrator"], blob["threshold"]
+
+    def predict_proba(self, texts: list[str]) -> np.ndarray:
+        """Calibrated P(scam)."""
+        return self.calibrator.predict(self.model.predict_proba(texts))
+
+
 _LOADERS = {
-    "text_muril": ("meta.json", _TransformerScorer),
-    "text_xlmr": ("meta.json", _TransformerScorer),
-    "text_distilbert": ("meta.json", _TransformerScorer),
     "text_hybrid_lgbm": ("model.joblib", _HybridScorer),
     "text_tfidf_lr": ("model.joblib", _TfidfScorer),
+    # calib.joblib is written after model.pt/vocab.json, so it marks a *complete* Bi-LSTM artifact.
+    "text_bilstm": ("calib.joblib", _BiLSTMScorer),
 }
+
+
+def search_order(prefer: str | None) -> list[str]:
+    """``config.TEXT_MODEL_PRIORITY`` with ``prefer`` moved to the front; unknown names are ignored."""
+    order = list(config.TEXT_MODEL_PRIORITY)
+    if not prefer:
+        return order
+    if prefer not in _LOADERS:
+        log.warning("unknown text model %r (known: %s); using the default order", prefer, ", ".join(_LOADERS))
+        return order
+    return [prefer, *(n for n in order if n != prefer)]
 
 
 def boost_with_rules(p: float, flags: list[RedFlag]) -> float:
@@ -102,14 +91,20 @@ def boost_with_rules(p: float, flags: list[RedFlag]) -> float:
 
 
 class TextAnalyzer:
-    """Analyze job/internship text. Picks the best model present in ``models_dir`` automatically."""
+    """Analyze job/internship text. Picks the best model present in ``models_dir`` automatically.
 
-    def __init__(self, models_dir: Path | None = None, use_rules_boost: bool = True) -> None:
+    ``prefer`` forces a specific model (e.g. ``"text_bilstm"``) to be tried first; the rest of the
+    priority order still acts as a fallback, so a missing artifact degrades instead of failing. The
+    model actually loaded is reported by ``model_name`` and by ``GET /health``.
+    """
+
+    def __init__(self, models_dir: Path | None = None, use_rules_boost: bool = True,
+                 prefer: str | None = None) -> None:
         self.models_dir = Path(models_dir) if models_dir else config.MODELS_DIR
         self.use_rules_boost = use_rules_boost
         self.model_name = "rules_only"
         self.scorer = None
-        for name in config.TEXT_MODEL_PRIORITY:
+        for name in search_order(prefer):
             if name not in _LOADERS:
                 log.warning("no loader registered for %s; skipping", name)
                 continue
@@ -126,6 +121,8 @@ class TextAnalyzer:
                 log.warning("could not load %s (%s); falling back", name, exc)
         if self.scorer is None:
             log.warning("no trained text model in %s; using rules only", self.models_dir)
+        elif prefer and self.model_name != prefer:
+            log.warning("preferred text model %r is unavailable; using %r instead", prefer, self.model_name)
         self.novelty = NoveltyDetector.load(self.models_dir / config.NOVELTY_DIR_SUFFIX)
 
     @property

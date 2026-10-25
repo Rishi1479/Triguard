@@ -156,7 +156,7 @@ class BiLSTMClassifier:
         obj = cls()
         obj.vocab = Vocab(json.loads((folder / "vocab.json").read_text()))
         obj.net = _build_bilstm_module()(len(obj.vocab.token_to_id) + 2)
-        obj.net.load_state_dict(torch.load(folder / "model.pt", map_location="cpu"))
+        obj.net.load_state_dict(torch.load(folder / "model.pt", map_location="cpu", weights_only=True))
         obj.net.eval()
         return obj
 

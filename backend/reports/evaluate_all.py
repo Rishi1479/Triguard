@@ -102,7 +102,7 @@ def cv_url(urls: list[str], y: np.ndarray) -> dict[str, dict]:
 
 # ------------------------------------------------------------------------------- 2. base paper
 def base_paper_table(splits: dict[str, pd.DataFrame]) -> tuple[str, dict]:
-    """Reported Bi-LSTM vs our reproduction vs TF-IDF+LR vs DistilBERT; AUROC from probabilities and from hard labels."""
+    """The paper's reported figures vs our models; AUROC from probabilities and from hard labels."""
     test = splits["test"]
     y = test["label"].to_numpy()
     rows, extra = [], {}
@@ -111,20 +111,18 @@ def base_paper_table(splits: dict[str, pd.DataFrame]) -> tuple[str, dict]:
         rows.append([label, st["f1"], st["recall"], "n/a†", st["auroc"], "n/a"])
     folder = config.MODELS_DIR / "text_bilstm"
     cands = {}
-    if (folder / "model.pt").exists():
+    if (folder / "calib.joblib").exists():
         calib = joblib.load(folder / "calib.joblib")
         bl = BiLSTMClassifier.load(folder)
-        cands["Ours: Bi-LSTM reproduction"] = (calib["calibrator"].predict(bl.predict_proba(test["text"].tolist())), calib["threshold"])
+        cands["Ours: text_bilstm"] = (calib["calibrator"].predict(bl.predict_proba(test["text"].tolist())), calib["threshold"])
     an = TextAnalyzer(use_rules_boost=False)
-    if an.model_name != "rules_only":
-        cands[f"Ours: {an.model_name}"] = (an.model_proba(test["text"].tolist()), an.threshold)
+    if an.model_name not in ("rules_only", "text_bilstm"):
+        cands[f"Ours: {an.model_name} (served)"] = (an.model_proba(test["text"].tolist()), an.threshold)
     for name, (p, thr) in cands.items():
         m = evaluate(y, p, thr)
         hard = float(roc_auc_score(y, (p >= thr).astype(int)))
         rows.append([name, m["f1"], m["recall"], m["roc_auc"], hard, m["pr_auc"]])
         extra[name] = {**m, "roc_auc_hard_labels": hard}
-    if not (config.MODELS_DIR / "text_distilbert" / "meta.json").exists():
-        rows.append(["Ours: DistilBERT", "pending (Colab)", "pending", "pending", "pending", "pending"])
     table = md_table(["Model", "F1", "Recall", "ROC-AUC (probabilities)", "ROC-AUC (hard labels)", "PR-AUC"], rows)
     return table, extra
 
@@ -149,7 +147,7 @@ def base_paper_derivation() -> tuple[str, dict]:
                       "(1+TPR−FPR)/2", "AUROC (reported)", "match"], rows)
 
     expected = base_paper.expected_fakes_in_test()
-    rate = base_paper.dataset_positive_rate()
+    stated, actual = config.BASE_PAPER_DATASET, config.EMSCAD_ACTUAL
     # Quote the benchmark model (the Bi-LSTM) rather than whichever happens to be lowest.
     headline = next((r for r in recs if r.name == "Bi-LSTM"), recs[0])
     lines = [
@@ -159,12 +157,14 @@ def base_paper_derivation() -> tuple[str, dict]:
         "AUROC for every model with a confusion matrix, which an AUROC integrated over probability "
         "thresholds would not. Our own AUROCs are therefore reported in both forms above — the "
         "columns are not comparable.", "",
-        f"**(b) The test split is not stratified.** EMSCAD is {100 * rate:.2f}% fraudulent "
-        f"({config.BASE_PAPER_DATASET['fake']:,} of {config.BASE_PAPER_DATASET['total']:,}), so a "
-        f"{config.BASE_PAPER_TEST_N:,}-row test split should hold about {expected:.0f} fake postings. "
-        f"The reconstructed matrices contain about {recs[0].positives}, roughly half, making the test "
-        "set easier than the deployment distribution. This project deduplicates before splitting and "
-        "splits with stratification (`ml/common/textprep.py`).", "",
+        f"**(b) The paper misstates its own dataset.** It reports {stated['fake']:,} fake postings of "
+        f"{stated['total']:,} ({100 * base_paper.dataset_positive_rate():.2f}%); the dataset holds "
+        f"{actual['fake']:,} ({100 * base_paper.actual_positive_rate():.2f}%). The reconstructed test "
+        f"matrix holds {headline.positives} positives in {config.BASE_PAPER_TEST_N:,} rows — a representative "
+        f"split would hold {expected:.0f} — so the split matches the real class balance and the "
+        f"{stated['fake']:,} in the paper's text is the error. The paper also does not deduplicate: "
+        "EMSCAD contains exact and near-duplicate postings that can sit on both sides of a random split. "
+        "This project deduplicates before splitting (`ml/common/textprep.py`).", "",
         f"**(c) Accuracy sits close to the majority-class floor.** For the {headline.name}, at a "
         f"{100 * headline.positive_rate:.2f}% positive rate, always predicting \"genuine\" already "
         f"scores {100 * headline.majority_baseline:.2f}% against its reported "
@@ -182,7 +182,8 @@ def base_paper_derivation() -> tuple[str, dict]:
                     "hard_label_auc": r.hard_label_auc, "auroc_reported": r.auroc_reported,
                     "majority_baseline": r.majority_baseline,
                     "auc_matches_hard_labels": r.auc_matches_hard_labels} for r in recs}
-    out["expected_fakes_if_stratified"] = expected
+    out["expected_fakes_if_representative"] = expected
+    out["dataset_fake_count"] = {"stated": stated["fake"], "actual": actual["fake"]}
     out["f1_discrepancies"] = disc
     return "\n".join(lines), out
 
@@ -435,12 +436,14 @@ def run(with_bilstm_cv: bool = False) -> str:
     res["ablation"] = [dict(zip(["config", "coverage", "precision", "recall", "f1", "pr_auc", "roc_auc"], r)) for r in abl_rows]
     (config.REPORTS_DIR / "evaluation.json").write_text(json.dumps(res, indent=2, default=str))
 
-    syn = {"text": flag("TEXT"), "url": flag("URL"), "aligned": aligned_synth}
+    # The Indian set writes no flag file; its rows carry source=SYNTHETIC instead.
+    custom_synth = custom is not None and bool((custom["source"] == "SYNTHETIC").any())
+    syn = {"text": flag("TEXT"), "url": flag("URL"), "aligned": aligned_synth, "indian": custom_synth}
     ocr = (config.REPORTS_DIR / "ocr_compare.md")
     md = ["# TriGuard – results", ""]
     if any(syn.values()):
         md += ["> **WARNING – SYNTHETIC DATA.** Sections marked 🧪 were computed on generated stand-in data "
-               f"(text: {syn['text']}, URL: {syn['url']}, aligned set: {syn['aligned']}). Do not quote them as scientific results; "
+               f"(text: {syn['text']}, Indian set: {syn['indian']}, URL: {syn['url']}, aligned set: {syn['aligned']}). Do not quote them as scientific results; "
                "rerun `python -m reports.evaluate_all` after adding the real datasets (see PROGRESS.md → WAITING FOR USER).", ""]
     tag = lambda s: " 🧪 SYNTHETIC" if s else ""
     cv_rows = [[k, *[v[m] for m in METRICS]] for k, v in cv.items()]
@@ -450,7 +453,9 @@ def run(with_bilstm_cv: bool = False) -> str:
            f"## 2. Comparison with the base paper (EMSCAD test split){tag(syn['text'])}", "", paper_tbl, "",
            "★ = the model this project is benchmarked against. † the paper publishes no "
            "probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our "
-           "models both forms are shown so like is compared with like.", "",
+           "models both forms are shown so like is compared with like. `text_bilstm` reads text only; the "
+           "paper's Bi-LSTM also takes EMSCAD's structured form fields (company logo, employment type, "
+           "industry …), which TriGuard's inputs never carry.", "",
            "### 2b. Reconciling the base paper's reported figures", "", deriv_tbl, "",
            "Computed by `ml/common/base_paper.py` from the figures in the paper's Tables 2–3 and "
            "Figures 5–6, and covered by `tests/test_base_paper.py` — the derivation can be re-run, "
@@ -458,9 +463,9 @@ def run(with_bilstm_cv: bool = False) -> str:
            f"## 3. Ablation on the aligned multimodal set (out-of-fold, n={len(cases)}){tag(syn['aligned'])}", "",
            md_table(["Configuration", "Coverage", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC"], abl_rows), "",
            "Coverage = share of cases where the configuration has at least one input. Thresholds are tuned on each fold's training part. ![PR curves](figures/pr_ablation.png)", "",
-           f"## 4. Generalisation: EMSCAD-trained text model → Indian set{tag(syn['text'])}", "", gen_tbl, "",
+           f"## 4. Generalisation: EMSCAD-trained text model → Indian set{tag(syn['text'] or syn['indian'])}", "", gen_tbl, "",
            "Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F1 (threshold) indicates calibration shift rather than lost signal.", "",
-           f"### 4b. Fixing the transfer: prior correction + target recalibration{tag(syn['text'])}", "", tr_tbl, "",
+           f"### 4b. Fixing the transfer: prior correction + target recalibration{tag(syn['text'] or syn['indian'])}", "", tr_tbl, "",
            "`naive` carries the EMSCAD threshold over unchanged — the MCC of ~0 means the model labels *every* "
            "target row as scam, so ranking is perfect but the decision is worthless. `adapted` shifts the logit by "
            "the prior log-odds difference and re-fits Platt scaling on half the target rows, then scores the other "
@@ -474,7 +479,7 @@ def run(with_bilstm_cv: bool = False) -> str:
            "![text](figures/reliability_text.png) ![url](figures/reliability_url.png) ![fusion](figures/reliability_fusion_meta.png)", "",
            "## 7. Confusion matrices & PR curves", "", " ".join(f"![{f}](figures/{f})" for f in figs if f.startswith(("cm_", "pr_"))), "",
            "## 8. Error analysis", "", "See [error_analysis.md](error_analysis.md) (10 examples).", "",
-           f"## 9. Adversarial robustness{tag(syn['text'])}", "", rob_tbl,
+           f"## 9. Adversarial robustness{tag(syn['text'] or syn['indian'])}", "", rob_tbl,
            "Scam rows only are rewritten by label-preserving obfuscations (spacing, homoglyphs, contact "
            "obfuscation, spelled-out amounts, euphemisms). `rule_recall` isolates the regex layer: where it "
            "collapses, keyword matching alone would have missed the scam. Full table: "

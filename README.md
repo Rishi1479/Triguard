@@ -18,7 +18,7 @@ flowchart LR
     FE -->|multipart POST /api/analyze| API["FastAPI backend<br/>validation, rate limit, SQLite (anonymised)"]
     API --> P["TriGuardPipeline"]
     subgraph P_["Pipeline (models loaded once)"]
-        T["TextAnalyzer<br/>DistilBERT or TF-IDF+LR · rule flags · LIME"]
+        T["TextAnalyzer<br/>hybrid LightGBM / TF-IDF+LR / Bi-LSTM · rule flags · LIME"]
         I["ImageAnalyzer<br/>preprocess → OCR (EasyOCR/Tesseract) → TextAnalyzer<br/>QR decode · CLIP visual score"]
         L["URLAnalyzer<br/>LightGBM lexical · brand impersonation (rapidfuzz)<br/>WHOIS/TLS rules (metadata only) · SHAP"]
         X["Cross-modal checks<br/>company vs domain · HR e-mail · QR vs link · salary/role"]
@@ -61,19 +61,18 @@ docker compose up --build                  # UI http://localhost:8080 · API htt
 # or run each side alone:  docker build -t triguard-backend backend  ·  docker build -t triguard-frontend frontend
 ```
 Environment variables: `TRIGUARD_DB_URL`, `TRIGUARD_CORS`, `TRIGUARD_RATE_LIMIT`, `TRIGUARD_TIMEOUT_S`, `TRIGUARD_LIVE_CHECKS` (0 disables WHOIS/TLS),
-`TRIGUARD_OCR_BACKEND` (auto|easyocr|tesseract). Deployment on free tiers: [docs/deploy.md](docs/deploy.md).
+`TRIGUARD_OCR_BACKEND` (auto|easyocr|tesseract), `TRIGUARD_TEXT_MODEL` (text_hybrid_lgbm|text_tfidf_lr|text_bilstm; default: best one trained). Deployment on free tiers: [docs/deploy.md](docs/deploy.md).
 
 ## Training / reproduction steps
 
-1. **Data** → `backend/data/raw/`: `fake_job_postings.csv` (Kaggle "Real / Fake Job Posting Prediction"), optional `custom_text.csv` (template in `backend/data/raw/custom_text_template.csv`),
+1. **Data** → `backend/data/raw/`: EMSCAD as `DataSet.csv` (original release, t/f labels) or `fake_job_postings.csv` (Kaggle copy), optional `custom_text.csv` (template in `backend/data/raw/custom_text_template.csv`),
    `urls/*.csv` (PhishTank / Kaggle malicious_phish), real images in `backend/data/images/{scam,genuine}/`, aligned cases in `backend/data/aligned/aligned.csv` ([format](backend/data/aligned/README.md)).
    (Run all commands in steps 2–5 from `backend/`.) Missing pieces are replaced by clearly-marked `SYNTHETIC_*` data so everything still runs.
 2. **Prepare**: `python -m ml.text.prepare_emscad && python -m ml.text.prepare_custom && python -m ml.url.prepare_urls && python -m ml.image.prepare_images`
    (dedupe *before* stratified 70/15/15 split, seed 42).
-3. **Train**: `python -m ml.text.baselines` (TF-IDF+LR and Bi-LSTM reproduction) · `python -m ml.url.train` (LightGBM) ·
+3. **Train**: `python -m ml.text.baselines` (all three text models) or `--model hybrid_lgbm` / `tfidf_lr` / `bilstm` to train just one · `python -m ml.url.train` (LightGBM) ·
    `python -m ml.fusion.train_fuser` (meta-classifier; only installed when trained on a real `aligned.csv`).
-4. **GPU models (Colab)**: run `backend/ml/notebooks/text_distilbert_colab.ipynb` → unzip into `backend/models/text_distilbert/`; run `backend/ml/notebooks/image_clip_colab.ipynb` → `backend/models/image_clip/`.
-   They are picked up automatically; nothing else changes.
+4. **GPU model (Colab)**: run `backend/ml/notebooks/image_clip_colab.ipynb` → `backend/models/image_clip/`. It is picked up automatically; nothing else changes.
 5. **Evaluate**: `python -m ml.image.compare_ocr && python -m reports.evaluate_all [--with-bilstm-cv]` → [backend/reports/RESULTS.md](backend/reports/RESULTS.md), `backend/reports/error_analysis.md`, `backend/reports/figures/`.
 
 ## API
@@ -101,7 +100,7 @@ EMSCAD → Indian generalisation, OCR character-error-rate, calibration (ECE) an
 **Current numbers are from synthetic data and must not be quoted**; they are placeholders that prove the pipeline works end to end. Re-run step 5 after adding real data.
 
 ## Limitations
-- No real EMSCAD / URL / aligned data or GPU-trained DistilBERT/CLIP were available during development; stand-in models are over-confident outside their synthetic training distribution
+- No real URL / aligned data or GPU-trained CLIP were available during development (real EMSCAD was added on 2026-10-25); stand-in models are over-confident outside their synthetic training distribution
   (e.g. a short genuine posting can score "Suspicious").
 - EMSCAD is English, US-centric and old; Indian scam wording (UPI, WhatsApp/Telegram, Aadhaar/PAN) is covered mainly by rules until real Indian data is added.
 - Domain age (WHOIS) and TLS lookups are best-effort with 3 s timeouts and can fail; they act only as inference-time rules, never as training features.

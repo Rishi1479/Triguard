@@ -1,5 +1,3 @@
-import json
-
 import joblib
 import numpy as np
 import pytest
@@ -81,32 +79,19 @@ def test_boost_off(models_dir):
     assert on >= off
 
 
-def test_corrupt_distilbert_falls_back(models_dir, tmp_path):
+def test_corrupt_hybrid_falls_back(models_dir, tmp_path):
     import shutil
     d = tmp_path / "m"
     shutil.copytree(models_dir, d)
-    (d / "text_distilbert").mkdir()
-    (d / "text_distilbert" / "meta.json").write_text("{}")
+    (d / "text_hybrid_lgbm").mkdir()
+    (d / "text_hybrid_lgbm" / "model.joblib").write_bytes(b"not a pickle")
     assert TextAnalyzer(models_dir=d).model_name == "text_tfidf_lr"
 
 
-def test_tiny_distilbert_is_preferred(models_dir, tmp_path):
-    import shutil
-    from transformers import BertTokenizerFast, DistilBertConfig, DistilBertForSequenceClassification
-    d = tmp_path / "m"
-    shutil.copytree(models_dir, d)
-    out = d / "text_distilbert"
-    out.mkdir()
-    vocab = ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "[MASK]", "pay", "fee", "job", "hiring", "engineer"]
-    (out / "vocab.txt").write_text("\n".join(vocab))
-    BertTokenizerFast(vocab_file=str(out / "vocab.txt")).save_pretrained(out)
-    cfg = DistilBertConfig(vocab_size=len(vocab), dim=16, n_layers=1, n_heads=2, hidden_dim=32, num_labels=2)
-    DistilBertForSequenceClassification(cfg).save_pretrained(out)
-    (out / "meta.json").write_text(json.dumps({"max_len": 32, "threshold": 0.4, "platt_coef": 1.0, "platt_intercept": 0.0}))
-    an = TextAnalyzer(models_dir=d)
-    assert an.model_name == "text_distilbert" and an.threshold == 0.4
-    r = an.analyze(SCAM, explain=False)
-    assert 0 <= r.probability <= 1 and r.explanation["model"] == "text_distilbert"
+def test_only_the_three_text_models_are_servable():
+    from ml.text.analyzer import _LOADERS
+    assert config.TEXT_MODEL_PRIORITY == ("text_hybrid_lgbm", "text_tfidf_lr", "text_bilstm")
+    assert set(_LOADERS) == set(config.TEXT_MODEL_PRIORITY)
 
 
 def test_bilstm_trains_and_saves(data, tmp_path, monkeypatch):
@@ -118,6 +103,66 @@ def test_bilstm_trains_and_saves(data, tmp_path, monkeypatch):
     assert p.shape == (40,) and ((p >= 0) & (p <= 1)).all()
     clf.save(tmp_path / "bl")
     assert (tmp_path / "bl" / "model.pt").exists() and (tmp_path / "bl" / "vocab.json").exists()
+
+
+@pytest.fixture(scope="module")
+def with_bilstm(models_dir, data, tmp_path_factory):
+    """models_dir copy that also holds a tiny trained Bi-LSTM artifact (as baselines.py writes it)."""
+    import shutil
+    texts, y = data
+    d = tmp_path_factory.mktemp("bl") / "m"
+    shutil.copytree(models_dir, d)
+    mp = pytest.MonkeyPatch()
+    mp.setattr(config, "BILSTM_EPOCHS", 1)
+    mp.setattr(config, "BILSTM_MAX_LEN", 60)
+    try:
+        clf = BiLSTMClassifier().fit(texts[:200], y[:200], texts[200:260], y[200:260])
+        clf.save(d / "text_bilstm")
+    finally:
+        mp.undo()
+    cal = PlattCalibrator().fit(clf.predict_proba(texts[260:]), y[260:])
+    joblib.dump({"calibrator": cal, "threshold": 0.45}, d / "text_bilstm" / "calib.joblib")
+    return d
+
+
+def test_bilstm_not_chosen_by_default(with_bilstm):
+    assert TextAnalyzer(models_dir=with_bilstm).model_name == "text_tfidf_lr"
+
+
+def test_bilstm_served_when_preferred(with_bilstm):
+    an = TextAnalyzer(models_dir=with_bilstm, prefer="text_bilstm")
+    assert an.model_name == "text_bilstm" and an.threshold == 0.45
+    r = an.analyze(SCAM)
+    assert 0 <= r.probability <= 1 and r.explanation["model"] == "text_bilstm"
+    assert r.explanation["lime_top_words"]  # LIME works through model_proba for any scorer
+
+
+def test_search_order_puts_preferred_first():
+    from ml.text.analyzer import search_order
+    assert search_order(None)[-1] == "text_bilstm"
+    assert search_order("text_bilstm")[0] == "text_bilstm"
+    assert search_order("no_such_model") == list(config.TEXT_MODEL_PRIORITY)
+
+
+def test_preferred_missing_falls_back(models_dir, caplog):
+    an = TextAnalyzer(models_dir=models_dir, prefer="text_bilstm")
+    assert an.model_name == "text_tfidf_lr"
+    assert "preferred text model 'text_bilstm' is unavailable" in caplog.text
+
+
+def test_incomplete_bilstm_is_skipped(with_bilstm, tmp_path):
+    import shutil
+    d = tmp_path / "m"
+    shutil.copytree(with_bilstm, d)
+    (d / "text_bilstm" / "model.pt").unlink()  # calib.joblib present, weights missing
+    assert TextAnalyzer(models_dir=d, prefer="text_bilstm").model_name == "text_tfidf_lr"
+
+
+def test_pipeline_passes_text_model(with_bilstm):
+    from ml.pipeline import TriGuardPipeline
+    p = TriGuardPipeline(models_dir=with_bilstm, enable_live=False, text_model="text_bilstm",
+                         image=object(), url=object())
+    assert p.text.model_name == "text_bilstm"
 
 
 def test_vocab_uses_given_texts_only():

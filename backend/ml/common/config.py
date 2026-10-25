@@ -34,6 +34,9 @@ LABEL_SCAM: str = "Likely Scam"
 
 # --- Data files ---------------------------------------------------------------
 EMSCAD_FILE: str = "fake_job_postings.csv"
+# Accepted names for the real EMSCAD CSV, first match wins: the original University of the Aegean
+# release (t/f labels) and the Kaggle copy (0/1 labels). Both hold the same 17,880 postings.
+EMSCAD_FILES: tuple[str, ...] = ("DataSet.csv", EMSCAD_FILE)
 CUSTOM_TEXT_FILE: str = "custom_text.csv"
 URL_RAW_DIR: Path = RAW_DIR / "urls"
 ALIGNED_FILE: str = "aligned.csv"
@@ -44,12 +47,12 @@ EMSCAD_TEXT_COLUMNS: tuple[str, ...] = (
 MIN_TEXT_CHARS: int = 20  # shorter merged texts are dropped as empty
 
 # --- Text module -----------------------------------------------------------------
-# Best first. MuRIL/XLM-R handle Hinglish + transliterated Indian scam text, which DistilBERT does not;
-# they are tried first and silently skipped when the Colab artifact is absent.
-TEXT_MODEL_PRIORITY: tuple[str, ...] = (
-    "text_muril", "text_xlmr", "text_distilbert", "text_hybrid_lgbm", "text_tfidf_lr",
-)
-TRANSFORMER_MAX_LEN: int = 256  # shared by MuRIL / XLM-R / DistilBERT scorers
+# The three servable text models, best first. Each is trained on its own with
+# ``python -m ml.text.baselines --model <name>`` and one can be forced with TRIGUARD_TEXT_MODEL;
+# otherwise the first one present in models/ is served. ``text_bilstm`` is the base paper's
+# architecture and is kept LAST, so it is never chosen over a stronger model just because its
+# artifact happens to be present.
+TEXT_MODEL_PRIORITY: tuple[str, ...] = ("text_hybrid_lgbm", "text_tfidf_lr", "text_bilstm")
 TFIDF_WORD_NGRAMS: tuple[int, int] = (1, 2)
 TFIDF_CHAR_NGRAMS: tuple[int, int] = (3, 5)
 TFIDF_MAX_FEATURES: int = 200_000
@@ -61,7 +64,6 @@ BILSTM_EPOCHS: int = 6
 BILSTM_PATIENCE: int = 2
 BILSTM_BATCH: int = 64
 BILSTM_LR: float = 1e-3
-DISTILBERT_MAX_LEN: int = 256
 LIME_NUM_SAMPLES: int = 300
 LIME_TOP_WORDS: int = 8
 # Probability boost from rule flags: p' = 1 - (1-p) * prod(1 - w[severity]).
@@ -84,6 +86,10 @@ BASE_PAPER_MODELS: dict[str, dict[str, float]] = {
     "Gradient Boosting": {"auroc": 0.68, "accuracy": 0.9667, "precision": 0.86, "recall": 0.37, "f1": 0.62},
 }
 BASE_PAPER: dict[str, float] = BASE_PAPER_MODELS["Bi-LSTM"]  # the model we are compared against
+# The dataset as it actually is, counted from data/raw/DataSet.csv (EMSCAD v1). The paper's 1,636
+# fake postings are not in it; tests/test_base_paper.py re-counts when the CSV is present.
+EMSCAD_ACTUAL: dict[str, int] = {"total": 17_880, "genuine": 17_014, "fake": 866}
+
 
 # --- Behavioural (rule-derived) features -------------------------------------------
 # Rule firings are fed to the model as named numeric features instead of only boosting the
