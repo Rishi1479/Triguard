@@ -1,4 +1,4 @@
-"""TextAnalyzer: chosen or best available text model (hybrid LightGBM > TF-IDF+LR > Bi-LSTM > rules only) -> ModalityResult."""
+"""TextAnalyzer: chosen or best available text model (TF-IDF+LR > hybrid LightGBM > Bi-LSTM > rules only) -> ModalityResult."""
 from __future__ import annotations
 
 import logging

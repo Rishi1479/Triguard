@@ -49,10 +49,11 @@ MIN_TEXT_CHARS: int = 20  # shorter merged texts are dropped as empty
 # --- Text module -----------------------------------------------------------------
 # The three servable text models, best first. Each is trained on its own with
 # ``python -m ml.text.baselines --model <name>`` and one can be forced with TRIGUARD_TEXT_MODEL;
-# otherwise the first one present in models/ is served. ``text_bilstm`` is the base paper's
-# architecture and is kept LAST, so it is never chosen over a stronger model just because its
-# artifact happens to be present.
-TEXT_MODEL_PRIORITY: tuple[str, ...] = ("text_hybrid_lgbm", "text_tfidf_lr", "text_bilstm")
+# otherwise the first one present in models/ is served. Order from real EMSCAD validation
+# (2026-10-25): TF-IDF+LR F1 0.830 / PR-AUC 0.881, hybrid LightGBM 0.731 / 0.781, Bi-LSTM
+# 0.701 / 0.739. ``text_bilstm`` is the base paper's architecture and is kept LAST, so it is never
+# chosen over a stronger model just because its artifact happens to be present.
+TEXT_MODEL_PRIORITY: tuple[str, ...] = ("text_tfidf_lr", "text_hybrid_lgbm", "text_bilstm")
 TFIDF_WORD_NGRAMS: tuple[int, int] = (1, 2)
 TFIDF_CHAR_NGRAMS: tuple[int, int] = (3, 5)
 TFIDF_MAX_FEATURES: int = 200_000

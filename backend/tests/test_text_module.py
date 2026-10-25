@@ -79,18 +79,17 @@ def test_boost_off(models_dir):
     assert on >= off
 
 
-def test_corrupt_hybrid_falls_back(models_dir, tmp_path):
+def test_corrupt_default_falls_back_to_the_next_model(with_bilstm, tmp_path):
     import shutil
     d = tmp_path / "m"
-    shutil.copytree(models_dir, d)
-    (d / "text_hybrid_lgbm").mkdir()
-    (d / "text_hybrid_lgbm" / "model.joblib").write_bytes(b"not a pickle")
-    assert TextAnalyzer(models_dir=d).model_name == "text_tfidf_lr"
+    shutil.copytree(with_bilstm, d)
+    (d / "text_tfidf_lr" / "model.joblib").write_bytes(b"not a pickle")
+    assert TextAnalyzer(models_dir=d).model_name == "text_bilstm"
 
 
 def test_only_the_three_text_models_are_servable():
     from ml.text.analyzer import _LOADERS
-    assert config.TEXT_MODEL_PRIORITY == ("text_hybrid_lgbm", "text_tfidf_lr", "text_bilstm")
+    assert config.TEXT_MODEL_PRIORITY == ("text_tfidf_lr", "text_hybrid_lgbm", "text_bilstm")
     assert set(_LOADERS) == set(config.TEXT_MODEL_PRIORITY)
 
 

@@ -61,7 +61,7 @@ docker compose up --build                  # UI http://localhost:8080 · API htt
 # or run each side alone:  docker build -t triguard-backend backend  ·  docker build -t triguard-frontend frontend
 ```
 Environment variables: `TRIGUARD_DB_URL`, `TRIGUARD_CORS`, `TRIGUARD_RATE_LIMIT`, `TRIGUARD_TIMEOUT_S`, `TRIGUARD_LIVE_CHECKS` (0 disables WHOIS/TLS),
-`TRIGUARD_OCR_BACKEND` (auto|easyocr|tesseract), `TRIGUARD_TEXT_MODEL` (text_hybrid_lgbm|text_tfidf_lr|text_bilstm; default: best one trained). Deployment on free tiers: [docs/deploy.md](docs/deploy.md).
+`TRIGUARD_OCR_BACKEND` (auto|easyocr|tesseract), `TRIGUARD_TEXT_MODEL` (text_tfidf_lr|text_hybrid_lgbm|text_bilstm; default: the first of these that is trained). Deployment on free tiers: [docs/deploy.md](docs/deploy.md).
 
 ## Training / reproduction steps
 
