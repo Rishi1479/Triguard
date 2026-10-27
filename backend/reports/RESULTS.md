@@ -1,17 +1,17 @@
 # TriGuard – results
 
-> **WARNING – SYNTHETIC DATA.** Sections marked 🧪 were computed on generated stand-in data (text: True, URL: True, aligned set: True). Do not quote them as scientific results; rerun `python -m reports.evaluate_all` after adding the real datasets (see PROGRESS.md → WAITING FOR USER).
+> **WARNING – SYNTHETIC DATA.** Sections marked 🧪 were computed on generated stand-in data (text: False, Indian set: True, URL: False, aligned set: True). Do not quote them as scientific results; rerun `python -m reports.evaluate_all` after adding the real datasets (see PROGRESS.md → WAITING FOR USER).
 
-## 1. 5-fold stratified cross-validation (mean ± std) 🧪 SYNTHETIC
+## 1. 5-fold stratified cross-validation (mean ± std)
 
 | Model | precision | recall | f1 | pr_auc | roc_auc | mcc |
 |---|---|---|---|---|---|---|
-| TF-IDF + LR | 1.000 ± 0.000 | 0.980 ± 0.007 | 0.990 ± 0.003 | 0.990 ± 0.005 | 0.995 ± 0.003 | 0.988 ± 0.004 |
-| LightGBM (lexical) | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 | 1.000 ± 0.000 |
+| TF-IDF + LR | 0.891 ± 0.061 | 0.769 ± 0.037 | 0.824 ± 0.036 | 0.891 ± 0.028 | 0.983 ± 0.005 | 0.820 ± 0.039 |
+| LightGBM (lexical) | 0.762 ± 0.007 | 0.778 ± 0.006 | 0.770 ± 0.001 | 0.872 ± 0.001 | 0.919 ± 0.001 | 0.654 ± 0.002 |
 
 Thresholds and Platt calibration are fitted inside each fold on a 15% validation split; vectorizers/tokenizers fit on the training part only.
 
-## 2. Comparison with the base paper (EMSCAD test split) 🧪 SYNTHETIC
+## 2. Comparison with the base paper (EMSCAD test split)
 
 | Model | F1 | Recall | ROC-AUC (probabilities) | ROC-AUC (hard labels) | PR-AUC |
 |---|---|---|---|---|---|
@@ -19,11 +19,10 @@ Thresholds and Platt calibration are fitted inside each fold on a 15% validation
 | Pillai (2023) – LightGBM | 0.770 | 0.660 | n/a† | 0.830 | n/a |
 | Pillai (2023) – Random Forest | 0.570 | 0.400 | n/a† | 0.700 | n/a |
 | Pillai (2023) – Gradient Boosting | 0.620 | 0.370 | n/a† | 0.680 | n/a |
-| Ours: Bi-LSTM reproduction | 0.977 | 0.956 | 0.999 | 0.978 | 0.995 |
-| Ours: text_hybrid_lgbm | 0.967 | 0.978 | 1.000 | 0.986 | 0.997 |
-| Ours: DistilBERT | pending (Colab) | pending | pending | pending | pending |
+| Ours: text_bilstm | 0.673 | 0.632 | 0.963 | 0.810 | 0.756 |
+| Ours: text_tfidf_lr (served) | 0.806 | 0.708 | 0.976 | 0.853 | 0.873 |
 
-★ = the model this project is benchmarked against. † the paper publishes no probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our models both forms are shown so like is compared with like.
+★ = the model this project is benchmarked against. † the paper publishes no probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our models both forms are shown so like is compared with like. `text_bilstm` reads text only; the paper's Bi-LSTM also takes EMSCAD's structured form fields (company logo, employment type, industry …), which TriGuard's inputs never carry.
 
 ### 2b. Reconciling the base paper's reported figures
 
@@ -34,7 +33,7 @@ Thresholds and Platt calibration are fitted inside each fold on a 15% validation
 
 **(a) The reported AUROC is a hard-label AUROC.** The area under an ROC curve drawn through a single operating point is `(1 + TPR − FPR) / 2`. That expression reproduces the published AUROC for every model with a confusion matrix, which an AUROC integrated over probability thresholds would not. Our own AUROCs are therefore reported in both forms above — the columns are not comparable.
 
-**(b) The test split is not stratified.** EMSCAD is 9.15% fraudulent (1,636 of 17,880), so a 3,576-row test split should hold about 327 fake postings. The reconstructed matrices contain about 173, roughly half, making the test set easier than the deployment distribution. This project deduplicates before splitting and splits with stratification (`ml/common/textprep.py`).
+**(b) The paper misstates its own dataset.** It reports 1,636 fake postings of 17,880 (9.15%); the dataset holds 866 (4.84%). The reconstructed test matrix holds 173 positives in 3,576 rows — a representative split would hold 173 — so the split matches the real class balance and the 1,636 in the paper's text is the error. The paper also does not deduplicate: EMSCAD contains exact and near-duplicate postings that can sit on both sides of a random split. This project deduplicates before splitting (`ml/common/textprep.py`).
 
 **(c) Accuracy sits close to the majority-class floor.** For the Bi-LSTM, at a 4.84% positive rate, always predicting "genuine" already scores 95.19% against its reported 98.71% — a margin of 3.52 points. Accuracy is reported here only as a secondary metric; PR-AUC and MCC are the headline numbers.
 
@@ -62,10 +61,10 @@ Coverage = share of cases where the configuration has at least one input. Thresh
 
 | Set | Variant | Precision | Recall | F1 | PR-AUC | ROC-AUC | MCC |
 |---|---|---|---|---|---|---|---|
-| EMSCAD test | model only | 0.957 | 0.978 | 0.967 | 0.997 | 1.000 | 0.962 |
-| EMSCAD test | model + rules | 0.815 | 0.978 | 0.889 | 0.987 | 0.997 | 0.875 |
-| Indian custom | model only | 0.500 | 1.000 | 0.667 | 1.000 | 1.000 | 0.000 |
-| Indian custom | model + rules | 0.500 | 1.000 | 0.667 | 1.000 | 1.000 | 0.000 |
+| EMSCAD test | model only | 0.938 | 0.708 | 0.806 | 0.873 | 0.976 | 0.807 |
+| EMSCAD test | model + rules | 0.938 | 0.708 | 0.806 | 0.848 | 0.970 | 0.807 |
+| Indian custom | model only | 1.000 | 0.054 | 0.103 | 0.837 | 0.760 | 0.167 |
+| Indian custom | model + rules | 1.000 | 0.405 | 0.577 | 1.000 | 1.000 | 0.504 |
 
 Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F1 (threshold) indicates calibration shift rather than lost signal.
 
@@ -73,14 +72,14 @@ Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F
 
 | Model | Transfer | Threshold | Precision | Recall | F1 | PR-AUC | ROC-AUC | MCC |
 |---|---|---|---|---|---|---|---|---|
-| tfidf_lr | naive | 0.500 | 0.514 | 1.000 | 0.679 | 0.899 | 0.884 | 0.164 |
-| tfidf_lr | adapted | 0.490 | 0.760 | 1.000 | 0.864 | 0.899 | 0.884 | 0.721 |
-| hybrid_lgbm | naive | 0.120 | 0.500 | 1.000 | 0.667 | 1.000 | 1.000 | 0.000 |
-| hybrid_lgbm | adapted | 0.890 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
-| bilstm | naive | 0.500 | 0.528 | 1.000 | 0.691 | 0.860 | 0.806 | 0.236 |
-| bilstm | adapted | 0.295 | 0.655 | 1.000 | 0.792 | 0.860 | 0.806 | 0.557 |
+| tfidf_lr | naive | 0.610 | 0.000 | 0.000 | 0.000 | 0.872 | 0.792 | 0.000 |
+| tfidf_lr | adapted | 0.540 | 0.652 | 0.789 | 0.714 | 0.872 | 0.792 | 0.377 |
+| hybrid_lgbm | naive | 0.390 | 0.789 | 0.789 | 0.789 | 0.871 | 0.853 | 0.579 |
+| hybrid_lgbm | adapted | 0.545 | 0.833 | 0.789 | 0.811 | 0.871 | 0.853 | 0.632 |
+| bilstm | naive | 0.470 | 1.000 | 0.684 | 0.812 | 0.950 | 0.939 | 0.721 |
+| bilstm | adapted | 0.505 | 0.739 | 0.895 | 0.810 | 0.950 | 0.939 | 0.592 |
 
-Source scam prior 0.130 -> target 0.500 (logit shift +1.897); method `prior_plus_target_platt`, 36 target rows used for recalibration, metrics reported on the 38 held-out target rows.
+Source scam prior 0.045 -> target 0.500 (logit shift +3.053); method `prior_plus_target_platt`, 36 target rows used for recalibration, metrics reported on the 38 held-out target rows.
 
 `naive` carries the EMSCAD threshold over unchanged — the MCC of ~0 means the model labels *every* target row as scam, so ranking is perfect but the decision is worthless. `adapted` shifts the logit by the prior log-odds difference and re-fits Platt scaling on half the target rows, then scores the other half. See `ml/common/prior_shift.py`.
 
@@ -102,12 +101,12 @@ Images: 20
 | tesseract | preprocessed + binarised | 0.002 | 0.000 | 0.28 |
 
 
-## 6. Calibration (ECE) 🧪 SYNTHETIC
+## 6. Calibration (ECE)
 
 | Model | ECE before calibration | ECE after Platt scaling |
 |---|---|---|
-| Text (TF-IDF+LR) | 0.019 | 0.010 |
-| URL (LightGBM) | 0.000 | 0.000 |
+| Text (TF-IDF+LR) | 0.026 | 0.003 |
+| URL (LightGBM) | 0.086 | 0.004 |
 
 ![text](figures/reliability_text.png) ![url](figures/reliability_url.png) ![fusion](figures/reliability_fusion_meta.png)
 
