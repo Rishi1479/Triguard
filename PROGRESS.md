@@ -605,3 +605,49 @@ that: multimodal fusion, adversarial robustness and calibration, none of which t
 These comparisons still run against *our* synthetic EMSCAD stand-in, so the "Ours:" rows in section 2
 are not yet a real comparison. Section 2b is unaffected — it reconciles the paper's own published
 figures and needs no data at all.
+
+## URL model on real data: Kaggle malicious_phish (2026-10-27)
+
+### What was built
+- **Real URL data.** `backend/data/raw/urls/malicious_phish.csv` (Kaggle, 651,191 URLs: benign 428,103,
+  defacement 96,457, phishing 94,111, malware 32,520). `prepare_urls` removes 18,285 duplicates →
+  632,906 unique URLs, 33.3% malicious; stratified split 443,034 / 94,936 / 94,936 (seed 42).
+  `SYNTHETIC_URL.flag` is gone.
+- **Scheme leak fixed.** In this corpus 8% of benign URLs carry `http(s)://` against 100% of
+  defacement, 96% of malware and 26% of phishing URLs (benign: 3% `www.`, defacement 70%). Features are
+  now computed on `canonical_url()` (no scheme, leading `www.` or trailing `/`), and `is_https` was
+  dropped: **34 features** (PROGRESS previously said 33; the real count was 35). `NO_HTTPS` stays a rule
+  flag. Dedupe (`normalize_url`) uses the same canonical form.
+- **Known-domain cap.** On real data the model rated short official careers links as risky
+  (tcs.com/careers 0.79, infosys.com/careers 0.59, careers.google.com 0.51), because malicious_phish's
+  benign URLs are mostly long deep pages. For a host on a verified employer domain
+  (`company_domains.csv`) or ATS domain (`config.ATS_DOMAINS`), with no impersonation and no
+  medium/high flag, the model's P(scam) is capped at `config.KNOWN_DOMAIN_MODEL_CAP` (0.15). The
+  explanation records `known_domain_cap`. User-content hosts (`config.USER_CONTENT_HOSTS`:
+  sites/docs/drive/groups.google.com) are never capped.
+- Files: `ml/url/{features,prepare_urls,analyzer}.py`, `ml/common/config.py`, `ml/fusion/explain.py`,
+  `tests/test_url_module.py` (+6 tests).
+
+### How to run
+`python -m ml.url.prepare_urls && python -m ml.url.train` (about 40 s for both on this Mac), then
+`python -m reports.evaluate_all`.
+
+### Metrics (real data, held-out test split, scam class)
+| Features | F1 | Precision | Recall | PR-AUC | ROC-AUC | MCC | ECE |
+|---|---|---|---|---|---|---|---|
+| Fixed (34, no scheme) | **0.771** | 0.758 | 0.785 | 0.873 | 0.919 | 0.654 | 0.004 |
+| Old (35, scheme visible) | 0.931 | – | – | 0.982 | 0.989 | – | – |
+
+The old features score higher only because they read the formatting: that model gave P(scam) = 1.00 to
+`https://careers.google.com/jobs/results`, `https://www.tcs.com/careers`, `https://www.linkedin.com/jobs/view/123`
+and `https://www.naukri.com/...`. Threshold (val, F1) 0.38; top features host_entropy, path_len, host_len.
+
+**Tests**: backend 399 passed.
+
+### Known issues
+- `best_iteration` = 400 = `n_estimators`: early stopping never triggered, so more trees may help. `LGBM_PARAMS`
+  is shared with the text hybrid model, so it was left unchanged.
+- malicious_phish is general web phishing/malware/defacement, not job scams; defacement (15%) is unrelated
+  to recruitment. Its benign and malicious URLs come from different sources, so other formatting
+  differences may remain. The known-domain cap hides this for ~66 employers and 15 ATS sites only.
+- The split is random, not grouped by domain, so the same host can appear in train and test.

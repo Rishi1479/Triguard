@@ -15,7 +15,7 @@ _SHAP_PHRASES = {
     "n_digits": "contains many digits", "digit_ratio": "has a high share of digits",
     "is_ip_host": "points to a raw IP address", "is_shortener": "is a shortened link",
     "subdomain_depth": "has many subdomain levels", "platform_link": "uses a generic form/chat link",
-    "is_https": "does not use HTTPS", "entropy": "looks randomly generated",
+    "entropy": "looks randomly generated",
 }
 _MODALITY_NAME = {"text": "Text", "image": "Image", "url": "Link"}
 

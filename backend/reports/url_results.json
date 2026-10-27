@@ -1,68 +1,68 @@
 {
-  "synthetic": true,
-  "threshold": 0.5,
-  "best_iteration": 395,
+  "synthetic": false,
+  "threshold": 0.38,
+  "best_iteration": 400,
   "test": {
-    "threshold": 0.5,
-    "precision": 1.0,
-    "recall": 1.0,
-    "f1": 1.0,
-    "pr_auc": 1.0,
-    "roc_auc": 1.0,
-    "mcc": 1.0,
-    "accuracy": 1.0,
+    "threshold": 0.38,
+    "precision": 0.7580605689813399,
+    "recall": 0.7848297703879652,
+    "f1": 0.771212946393838,
+    "pr_auc": 0.8728317122344996,
+    "roc_auc": 0.9191701807272765,
+    "mcc": 0.6544356715864774,
+    "accuracy": 0.8451272436167523,
     "confusion_matrix": [
       [
-        212,
-        0
+        55452,
+        7909
       ],
       [
-        0,
-        225
+        6794,
+        24781
       ]
     ],
-    "ece": 0.00014777411383846064
+    "ece": 0.004288902433448347
   },
   "top_features": [
     [
-      "entropy",
-      1478
-    ],
-    [
       "host_entropy",
-      1084
-    ],
-    [
-      "host_len",
-      646
-    ],
-    [
-      "url_len",
-      584
-    ],
-    [
-      "digit_ratio",
-      577
-    ],
-    [
-      "n_digits",
-      539
+      1359
     ],
     [
       "path_len",
-      417
+      960
     ],
     [
-      "n_letters",
-      311
-    ],
-    [
-      "longest_token",
-      264
+      "host_len",
+      871
     ],
     [
       "n_slashes",
-      151
+      802
+    ],
+    [
+      "longest_token",
+      729
+    ],
+    [
+      "digit_ratio",
+      691
+    ],
+    [
+      "n_digits",
+      632
+    ],
+    [
+      "tld_len",
+      613
+    ],
+    [
+      "n_dots",
+      604
+    ],
+    [
+      "entropy",
+      552
     ]
   ]
 }

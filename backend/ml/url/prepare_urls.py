@@ -2,21 +2,20 @@
 from __future__ import annotations
 
 import logging
-import re
 
 import pandas as pd
 
 from ml.common import config
 from ml.common.synthetic import make_urls
 from ml.common.textprep import class_balance, stratified_split
+from ml.url.features import canonical_url
 
 log = logging.getLogger(__name__)
-_SCHEME_RE = re.compile(r"^(?:https?://)?(?:www\.)?", re.I)
 
 
 def normalize_url(url: str) -> str:
-    """Key for dedupe: lower-case, no scheme/www/trailing slash."""
-    return _SCHEME_RE.sub("", url.strip().lower()).rstrip("/")
+    """Key for dedupe: the lower-cased form features are computed on (no scheme/www/trailing slash)."""
+    return canonical_url(url).lower()
 
 
 def to_standard(df: pd.DataFrame, source: str) -> pd.DataFrame:

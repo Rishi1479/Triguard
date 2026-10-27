@@ -29,11 +29,16 @@ KEYWORDS = ("login", "verify", "job", "hiring", "apply", "offer", "career", "reg
             "update", "confirm", "recruit", "internship", "payment", "wallet", "bonus", "free")
 _SPECIAL = {"dots": ".", "hyphens": "-", "underscores": "_", "slashes": "/", "question": "?", "equals": "=",
             "at": "@", "ampersand": "&", "percent": "%", "hash": "#"}
+# Scheme and a leading "www." (only when a real domain follows it, so "www.com" stays intact).
+_SCHEME_WWW_RE = re.compile(r"^(?:[a-z][a-z0-9+.-]*://)?(?:www\d*\.(?=[^/?#]*\.))?", re.I)
 
+# No scheme-based feature (e.g. is_https): labelled corpora write benign and malicious URLs differently
+# (Kaggle malicious_phish: 8% of benign URLs carry a scheme vs 96-100% of malware/defacement), so such a
+# feature learns the dataset's formatting, not the URL. HTTPS is still checked by the NO_HTTPS rule flag.
 FEATURE_NAMES: list[str] = [
     "url_len", "host_len", "path_len", "query_len", *[f"n_{k}" for k in _SPECIAL], "n_digits", "digit_ratio",
     "n_letters", "subdomain_depth", "is_ip_host", "suspicious_tld", "tld_len", "entropy", "host_entropy",
-    "is_shortener", "keyword_hits", "keyword_in_host", "platform_link", "is_https", "has_port", "n_params",
+    "is_shortener", "keyword_hits", "keyword_in_host", "platform_link", "has_port", "n_params",
     "double_slash_in_path", "longest_token", "host_hyphen_digit", "n_host_tokens", "has_punycode",
 ]
 
@@ -84,10 +89,19 @@ def is_reserved_domain(host: str) -> bool:
     return host.rsplit(".", 1)[-1] in RESERVED_TLDS or registered_domain(host) in RESERVED_DOMAINS
 
 
+def canonical_url(url: str) -> str:
+    """``url`` without scheme, leading ``www.`` and trailing ``/`` (e.g. ``HTTPS://www.a.com/`` -> ``a.com``).
+
+    Features are computed on this form so the same address scores the same however it was written.
+    """
+    return _SCHEME_WWW_RE.sub("", url.strip()[: config.MAX_URL_CHARS]).rstrip("/")
+
+
 def extract_features(url: str) -> dict[str, float]:
     """Compute the numeric feature dict (keys == FEATURE_NAMES) for a URL string."""
-    host, rest = parse_host(url)
-    raw = url.strip()[: config.MAX_URL_CHARS]
+    parse_host(url)  # rejects unsupported schemes / missing host before the scheme is stripped
+    raw = canonical_url(url)
+    host, rest = parse_host(raw)
     low = raw.lower()
     path, _, query = rest.partition("?")
     ext = _TLD(host) if not is_ip(host) else None
@@ -106,7 +120,7 @@ def extract_features(url: str) -> dict[str, float]:
         is_shortener=float(registered_domain(host) in SHORTENERS),
         keyword_hits=sum(low.count(k) for k in KEYWORDS), keyword_in_host=sum(k in host for k in KEYWORDS),
         platform_link=float(any(p in low for p in PLATFORM_LINKS)),
-        is_https=float(low.startswith("https://")), has_port=float(bool(re.search(r"://[^/]*:\d+", low))),
+        has_port=float(bool(re.match(r"^[^/?#]*:\d+", low))),
         n_params=len([p for p in query.split("&") if p]), double_slash_in_path=float("//" in path),
         longest_token=max((len(t) for t in re.split(r"[^a-z0-9]+", low) if t), default=0),
         host_hyphen_digit=float("-" in host and any(c.isdigit() for c in host)),

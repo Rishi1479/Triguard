@@ -206,4 +206,11 @@ ATS_DOMAINS: frozenset[str] = frozenset({
     "lever.co", "greenhouse.io", "myworkdayjobs.com", "smartrecruiters.com", "ashbyhq.com", "linkedin.com",
     "naukri.com", "indeed.com", "glassdoor.com", "internshala.com", "workable.com", "icims.com", "taleo.net",
     "successfactors.com", "wellfound.com"})
+# Ceiling on the URL model's P(scam) for a verified employer/ATS domain with no medium/high flag. The
+# lexical model learns from malicious_phish, whose benign URLs are mostly long deep pages, so a short
+# official careers link (tcs.com/careers) looks like phishing to it. Rule boosts still apply on top.
+KNOWN_DOMAIN_MODEL_CAP: float = 0.15
+# Hosts on a known domain that publish anyone's content; scammers use them, so they get no cap.
+USER_CONTENT_HOSTS: frozenset[str] = frozenset({"sites.google.com", "docs.google.com", "drive.google.com",
+                                                "groups.google.com"})
 PLATT_C: float = 1.0  # L2 strength of Platt scaling; keeps probabilities finite when validation is separable

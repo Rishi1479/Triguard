@@ -52,7 +52,7 @@ def lexical_flags(url: str, feats: dict[str, float], imp: Impersonation | None) 
         flags.append(_flag("AT_SYMBOL", "'@' in the URL can disguise the real destination.", "medium", url[:80]))
     if feats["has_punycode"]:
         flags.append(_flag("PUNYCODE_DOMAIN", "Internationalised (punycode) domain may be a look-alike.", "medium", host))
-    if not feats["is_https"] and not low.startswith("https"):
+    if not low.startswith("https"):
         flags.append(_flag("NO_HTTPS", "Link does not use HTTPS.", "low", url[:60]))
     return flags
 
@@ -88,6 +88,13 @@ def recognition_flags(domain: str, imp: Impersonation | None, sig: LiveSignals) 
     return [_flag("UNRECOGNIZED_EMPLOYER_DOMAIN",
                   f"{domain} could not be matched to a known employer's official site or a recognised job platform.",
                   "low", domain)]
+
+
+def is_trusted_host(host: str, domain: str, imp: Impersonation | None, flags: list[RedFlag]) -> bool:
+    """True if ``host`` is on a verified employer/ATS domain, is not a user-content host, and has no medium/high flag."""
+    known = domain in official_domains() or domain in config.ATS_DOMAINS
+    return (known and imp is None and host not in config.USER_CONTENT_HOSTS
+            and all(f.severity == "low" for f in flags))
 
 
 def boost(p: float, flags: list[RedFlag]) -> float:
@@ -167,6 +174,9 @@ class URLAnalyzer:
         p_model = self.model_proba(feats)
         explanation: dict = {"model": "url_lgbm" if self.blob else "rules_only", "model_probability": round(p_model, 4),
                              "threshold": self.threshold}
+        if is_trusted_host(t_host, domain, imp, flags) and p_model > config.KNOWN_DOMAIN_MODEL_CAP:
+            p_model = config.KNOWN_DOMAIN_MODEL_CAP
+            explanation["known_domain_cap"] = config.KNOWN_DOMAIN_MODEL_CAP
         if explain and self.blob is not None:
             try:
                 explanation["shap_top_features"] = self._shap_top(feats)

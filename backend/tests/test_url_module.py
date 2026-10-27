@@ -5,8 +5,8 @@ from ml.common import config
 from ml.common.calibration import PlattCalibrator
 from ml.url import live_checks
 from ml.url.analyzer import URLAnalyzer, boost, live_flags, recognition_flags
-from ml.url.features import (FEATURE_NAMES, entropy, extract_features, features_matrix, is_reserved_domain,
-                             parse_host, registered_domain)
+from ml.url.features import (FEATURE_NAMES, canonical_url, entropy, extract_features, features_matrix,
+                             is_reserved_domain, parse_host, registered_domain)
 from ml.url.impersonation import check_impersonation, official_domains
 from ml.url.live_checks import LiveChecker, LiveSignals
 
@@ -25,8 +25,23 @@ def test_features_keys_and_values():
     f = extract_features("http://tcs-hiring.online/apply?id=1&x=2")
     assert set(f) == set(FEATURE_NAMES)
     assert f["n_hyphens"] == 1 and f["n_question"] == 1 and f["n_params"] == 2
-    assert f["suspicious_tld"] == 1 and f["is_https"] == 0 and f["keyword_hits"] >= 2
+    assert f["suspicious_tld"] == 1 and f["keyword_hits"] >= 2
     assert extract_features("https://www.tcs.com/careers")["suspicious_tld"] == 0
+
+
+@pytest.mark.parametrize("variant", ["tcs-hiring.online/apply?id=1", "https://tcs-hiring.online/apply?id=1",
+                                     "HTTP://www.tcs-hiring.online/apply?id=1", "www2.tcs-hiring.online/apply?id=1/"])
+def test_features_ignore_scheme_www_and_trailing_slash(variant):
+    # Corpora format benign/malicious URLs differently; the model must not see that formatting.
+    assert extract_features(variant) == extract_features("http://tcs-hiring.online/apply?id=1")
+
+
+def test_canonical_url():
+    assert canonical_url("HTTPS://www.Example.com/") == "Example.com"
+    assert canonical_url("http://www.com/x") == "www.com/x"  # "www" is the domain here, not a prefix
+    assert canonical_url("ftp://a.com/") == "a.com"
+    f = extract_features("http://evil.com:8080/x")
+    assert f["has_port"] == 1 and extract_features("evil.com/x:80")["has_port"] == 0
 
 
 def test_features_special_cases():
@@ -97,6 +112,19 @@ def test_analyzer_scam_vs_genuine(url_models):
     assert s.extracted["impersonates"] == "TCS" and s.extracted["registered_domain"] == "tcs-hiring.online"
     assert s.explanation["shap_top_features"] and "feature" in s.explanation["shap_top_features"][0]
     assert s.red_flags[0].severity == "high"
+
+
+def test_known_domain_caps_model_probability(url_models, monkeypatch):
+    an = URLAnalyzer(models_dir=url_models, enable_live=False)
+    monkeypatch.setattr(an, "model_proba", lambda feats: 0.9)
+    for genuine in ["https://www.tcs.com/careers", "https://jobs.lever.co/acme/1", "https://careers.google.com/jobs"]:
+        r = an.analyze(genuine, explain=False)
+        assert r.probability == pytest.approx(config.KNOWN_DOMAIN_MODEL_CAP)
+        assert r.explanation["model_probability"] == 0.9 and "known_domain_cap" in r.explanation
+    # No cap for user-content hosts, form links on a known domain, or lookalikes.
+    for risky in ["https://sites.google.com/view/tcs-jobs", "https://docs.google.com/forms/d/abc",
+                  "https://tcs-careers.xyz/apply"]:
+        assert an.analyze(risky, explain=False).probability >= 0.9
 
 
 def test_analyzer_rules_only_without_model(tmp_path):
