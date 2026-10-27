@@ -154,12 +154,12 @@ def resolve(names: list[str] | None) -> list[str]:
     return out
 
 
-def _previous(path: Path, synthetic: bool) -> dict:
-    """Earlier results to merge into, unless they came from the other kind of data (synthetic vs real)."""
+def _previous(path: Path) -> dict:
+    """Earlier results to merge into; legacy results computed on SYNTHETIC data are discarded."""
     if not path.exists():
         return {}
     old = json.loads(path.read_text())
-    return old if old.get("synthetic") == synthetic else {}
+    return {} if old.get("synthetic") else old
 
 
 def run(models: list[str] | None = None, models_dir: Path = config.MODELS_DIR,
@@ -167,9 +167,8 @@ def run(models: list[str] | None = None, models_dir: Path = config.MODELS_DIR,
     """Train ``models`` (default: all), save their artifacts and merge results into text_baselines.json."""
     names = resolve(models)
     splits = load_splits()
-    synthetic = (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()
     out_file = reports_dir / "text_baselines.json"
-    results: dict = {**_previous(out_file, synthetic), "synthetic": synthetic}
+    results: dict = _previous(out_file)
 
     # Novelty guard, fit on the training split only. Lets the analyzer shrink scores toward the
     # prior on registers it has no training evidence for, instead of guessing confidently.

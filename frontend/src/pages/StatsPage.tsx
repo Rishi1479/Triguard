@@ -124,8 +124,8 @@ export default function StatsPage() {
       <Card className="p-4" style={{ background: 'var(--surface-sunken)' }}>
         <p className="text-xs text-[var(--ink-secondary)]">
           These are usage counts, not model accuracy. Measured model performance lives in
-          <span className="font-mono"> backend/reports/RESULTS.md</span>, and the current figures there are
-          computed on synthetic stand-in data — see the warning at the top of that file.
+          <span className="font-mono"> backend/reports/RESULTS.md</span>, computed on EMSCAD (text) and
+          Kaggle malicious_phish (URL).
         </p>
       </Card>
     </div>

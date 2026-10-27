@@ -6,7 +6,6 @@ import logging
 import pandas as pd
 
 from ml.common import config
-from ml.common.synthetic import make_emscad_like
 from ml.common.textprep import class_balance, clean_text, dedupe, merge_columns, stratified_split
 
 log = logging.getLogger(__name__)
@@ -20,19 +19,14 @@ def to_binary(col: pd.Series) -> pd.Series:
     return col.map(lambda v: int(str(v).strip().lower() in _TRUE) if pd.notna(v) else 0).astype(int)
 
 
-def load_raw() -> tuple[pd.DataFrame, bool]:
-    """Load the real CSV, or fall back to a SYNTHETIC one (written to data/raw/). Returns (df, synthetic)."""
+def load_raw() -> pd.DataFrame:
+    """Load the first EMSCAD CSV found in data/raw/. Raises FileNotFoundError if there is none."""
     for name in config.EMSCAD_FILES:
         real = config.RAW_DIR / name
         if real.exists():
             log.info("using %s", real.name)
-            return pd.read_csv(real), False
-    synth = config.RAW_DIR / (config.SYNTHETIC_PREFIX + config.EMSCAD_FILE)
-    log.warning("SYNTHETIC: none of %s found; generating %s", ", ".join(config.EMSCAD_FILES), synth.name)
-    config.RAW_DIR.mkdir(parents=True, exist_ok=True)
-    df = make_emscad_like()
-    df.to_csv(synth, index=False)
-    return df, True
+            return pd.read_csv(real)
+    raise FileNotFoundError(f"no EMSCAD file in {config.RAW_DIR}; expected one of: {', '.join(config.EMSCAD_FILES)}")
 
 
 def build_dataset(raw: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -46,9 +40,9 @@ def build_dataset(raw: pd.DataFrame) -> tuple[pd.DataFrame, int]:
 
 def run() -> dict[str, pd.DataFrame]:
     """Full pipeline: load -> clean -> dedupe -> split -> write data/processed/text_*.csv."""
-    raw, synthetic = load_raw()
+    raw = load_raw()
     df, removed = build_dataset(raw)
-    df["source"] = "SYNTHETIC" if synthetic else "EMSCAD"
+    df["source"] = "EMSCAD"
     print(f"rows in: {len(raw)}  duplicates/empties removed: {len(raw) - len(df)} (dupes: {removed})")
     print("class balance after dedupe:", class_balance(df))
     splits = dict(zip(("train", "val", "test"), stratified_split(df)))
@@ -56,11 +50,6 @@ def run() -> dict[str, pd.DataFrame]:
     for name, part in splits.items():
         part.to_csv(config.PROCESSED_DIR / f"text_{name}.csv", index=False)
         print(f"  {name}: {class_balance(part)}")
-    flag = config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag"
-    if synthetic:
-        flag.write_text("text_*.csv were generated from SYNTHETIC data\n")
-    elif flag.exists():
-        flag.unlink()
     return splits
 
 

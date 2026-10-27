@@ -40,15 +40,14 @@ def test_build_dataset_reads_tf_labels():
 def test_load_raw_accepts_either_file_name(tmp_path, monkeypatch, name):
     monkeypatch.setattr(config, "RAW_DIR", tmp_path)
     _raw_v1().to_csv(tmp_path / name, index=False)
-    raw, synthetic = prepare_emscad.load_raw()
-    assert not synthetic and len(raw) == 4
+    assert len(prepare_emscad.load_raw()) == 4
 
 
 def test_load_raw_prefers_the_first_listed_file(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RAW_DIR", tmp_path)
     _raw_v1(4).to_csv(tmp_path / config.EMSCAD_FILES[0], index=False)
     _raw_v1(2).to_csv(tmp_path / config.EMSCAD_FILES[1], index=False)
-    assert len(prepare_emscad.load_raw()[0]) == 4
+    assert len(prepare_emscad.load_raw()) == 4
 
 
 # ------------------------------------------------------------------------------- per-model training
@@ -70,14 +69,13 @@ def processed(tmp_path, monkeypatch):
     config.PROCESSED_DIR.mkdir()
     for name, part in zip(("train", "val", "test"), stratified_split(df)):
         part.to_csv(config.PROCESSED_DIR / f"text_{name}.csv", index=False)
-    (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").write_text("x")
     (tmp_path / "reports").mkdir()
     return tmp_path
 
 
 def test_training_one_model_keeps_the_others_results(processed):
     models, reports = processed / "models", processed / "reports"
-    (reports / "text_baselines.json").write_text(json.dumps({"synthetic": True, "bilstm": {"kept": 1}}))
+    (reports / "text_baselines.json").write_text(json.dumps({"bilstm": {"kept": 1}}))
     out = baselines.run(["tfidf_lr"], models_dir=models, reports_dir=reports)
     assert (models / "text_tfidf_lr" / "model.joblib").exists()
     assert not (models / "text_hybrid_lgbm").exists() and not (models / "text_bilstm").exists()
@@ -86,9 +84,9 @@ def test_training_one_model_keeps_the_others_results(processed):
     assert "test" in saved["tfidf_lr"] and "test" in out["tfidf_lr"]
 
 
-def test_results_from_the_other_kind_of_data_are_dropped(processed):
+def test_legacy_synthetic_results_are_dropped(processed):
     reports = processed / "reports"
-    (reports / "text_baselines.json").write_text(json.dumps({"synthetic": False, "bilstm": {"real": 1}}))
+    (reports / "text_baselines.json").write_text(json.dumps({"synthetic": True, "bilstm": {"old": 1}}))
     baselines.run(["tfidf_lr"], models_dir=processed / "models", reports_dir=reports)
     saved = json.loads((reports / "text_baselines.json").read_text())
     assert "bilstm" not in saved and "test" in saved["tfidf_lr"]

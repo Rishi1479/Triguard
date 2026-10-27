@@ -1,7 +1,7 @@
 """Full evaluation: CV, base-paper comparison, ablation, generalisation, calibration, errors -> reports/RESULTS.md.
 
 Run: python -m reports.evaluate_all [--with-bilstm-cv]
-Every section is flagged when it was computed on SYNTHETIC data.
+Sections whose dataset is missing (aligned set, Indian set, OCR ground truth) are skipped with a note.
 """
 from __future__ import annotations
 
@@ -38,11 +38,6 @@ ABLATION: dict[str, tuple[set[str], bool]] = {
     "Image + URL": ({"image", "url"}, False), "All three": ({"text", "image", "url"}, False),
     "All three + cross-modal checks": ({"text", "image", "url"}, True),
 }
-
-
-def flag(name: str) -> bool:
-    """True if the dataset behind ``name`` ('TEXT'|'URL') is SYNTHETIC."""
-    return (config.PROCESSED_DIR / f"SYNTHETIC_{name}.flag").exists()
 
 
 def md_table(header: list[str], rows: list[list]) -> str:
@@ -189,12 +184,13 @@ def base_paper_derivation() -> tuple[str, dict]:
 
 
 # ------------------------------------------------------------------------------- 3. ablation
-def load_cases() -> tuple[list[dict], bool]:
-    """Cached per-case modality outputs written by ml.fusion.train_fuser."""
-    cache = joblib.load(config.PROCESSED_DIR / "aligned_cache.joblib")
-    cases = [{"case_id": c["case_id"], "label": c["label"], "results": [ModalityResult(**r) for r in c["results"]],
-              "cross": [RedFlag(**f) for f in c["cross"]]} for c in cache["cases"]]
-    return cases, cache["synthetic"]
+def load_cases() -> list[dict]:
+    """Cached per-case modality outputs written by ml.fusion.train_fuser ([] if it has not been run)."""
+    f = config.PROCESSED_DIR / "aligned_cache.joblib"
+    if not f.exists():
+        return []
+    return [{"case_id": c["case_id"], "label": c["label"], "results": [ModalityResult(**r) for r in c["results"]],
+             "cross": [RedFlag(**f) for f in c["cross"]]} for c in joblib.load(f)["cases"]]
 
 
 def ablation(cases: list[dict]) -> tuple[list[list], dict[str, np.ndarray], np.ndarray]:
@@ -325,8 +321,9 @@ def robustness_section() -> tuple[str, dict]:
 
 
 # ------------------------------------------------------------------------------- 6. figures
-def make_figures(splits: dict[str, pd.DataFrame], scores: dict[str, np.ndarray], y_al: np.ndarray, an: TextAnalyzer) -> list[str]:
-    """Confusion matrices and PR curves."""
+def make_figures(splits: dict[str, pd.DataFrame], scores: dict[str, np.ndarray], y_al: np.ndarray | None,
+                 an: TextAnalyzer) -> list[str]:
+    """Confusion matrices and PR curves (fusion ones only when the aligned set has been scored)."""
     made = []
     y = splits["test"]["label"].to_numpy()
     p = an.model_proba(splits["test"]["text"].tolist())
@@ -338,10 +335,11 @@ def make_figures(splits: dict[str, pd.DataFrame], scores: dict[str, np.ndarray],
         pu = blob["calibrator"].predict(blob["model"].predict_proba(np.array(features_matrix(df["url"].tolist())))[:, 1])
         confusion_matrix_plot(evaluate(df["label"], pu, blob["threshold"])["confusion_matrix"], FIG / "cm_url.png", "URL (test)")
         pr_curve({"URL model": (df["label"].to_numpy(), pu)}, FIG / "pr_url.png", "URL PR curve (test)")
-    best = "Meta-classifier (all three + cross-modal)"
-    confusion_matrix_plot(evaluate(y_al, scores[best], find_best_threshold(y_al, scores[best], "f1"))["confusion_matrix"],
-                          FIG / "cm_fusion.png", "Fusion (out-of-fold)")
-    pr_curve({k: (y_al, v) for k, v in scores.items() if v.std() > 0}, FIG / "pr_ablation.png", "Ablation PR curves (out-of-fold)")
+    if y_al is not None:
+        best = "Meta-classifier (all three + cross-modal)"
+        confusion_matrix_plot(evaluate(y_al, scores[best], find_best_threshold(y_al, scores[best], "f1"))["confusion_matrix"],
+                              FIG / "cm_fusion.png", "Fusion (out-of-fold)")
+        pr_curve({k: (y_al, v) for k, v in scores.items() if v.std() > 0}, FIG / "pr_ablation.png", "Ablation PR curves (out-of-fold)")
     return sorted(f.name for f in FIG.glob("*.png"))
 
 
@@ -357,8 +355,8 @@ def _note(is_fn: bool, flags: list[str], near_miss: bool) -> str:
 
 
 def error_analysis(an: TextAnalyzer, splits: dict[str, pd.DataFrame], custom: pd.DataFrame | None,
-                   cases: list[dict], aligned_text: dict[int, str], fusion_scores: np.ndarray, n: int = 10) -> str:
-    """Collect the most confident mistakes (padded with near misses) from three evaluation sets."""
+                   cases: list[dict], aligned_text: dict[int, str], fusion_scores: np.ndarray | None, n: int = 10) -> str:
+    """Collect the most confident mistakes (padded with near misses) from up to three evaluation sets."""
     from ml.common.red_flags import detect_red_flags
 
     pool = []
@@ -373,13 +371,14 @@ def error_analysis(an: TextAnalyzer, splits: dict[str, pd.DataFrame], custom: pd
             continue
         p, _ = score_set(an, df, True)
         add(name, df.index, df["text"], df["label"], p, an.threshold, flags_text)
-    thr = find_best_threshold([c["label"] for c in cases], fusion_scores, "f1")
-    ft = {c["case_id"]: [f.code for r in c["results"] if r.available for f in r.red_flags] + [f.code for f in c["cross"]] for c in cases}
-    add("Aligned (fusion, out-of-fold)", [c["case_id"] for c in cases], [aligned_text.get(c["case_id"], "") or "(no text; image/URL only)" for c in cases],
-        [c["label"] for c in cases], fusion_scores, thr, lambda t: [])
-    for e in pool:
-        if e["set"].startswith("Aligned"):
-            e["flags"] = sorted(set(ft[e["id"]]))[:4]
+    if cases:
+        thr = find_best_threshold([c["label"] for c in cases], fusion_scores, "f1")
+        ft = {c["case_id"]: [f.code for r in c["results"] if r.available for f in r.red_flags] + [f.code for f in c["cross"]] for c in cases}
+        add("Aligned (fusion, out-of-fold)", [c["case_id"] for c in cases], [aligned_text.get(c["case_id"], "") or "(no text; image/URL only)" for c in cases],
+            [c["label"] for c in cases], fusion_scores, thr, lambda t: [])
+        for e in pool:
+            if e["set"].startswith("Aligned"):
+                e["flags"] = sorted(set(ft[e["id"]]))[:4]
     wrong = sorted([e for e in pool if e["wrong"]], key=lambda e: -abs(e["p"] - e["y"]))
     chosen, per_set = [], {}
     for e in wrong:  # round-robin over sets so one set does not dominate
@@ -389,8 +388,6 @@ def error_analysis(an: TextAnalyzer, splits: dict[str, pd.DataFrame], custom: pd
     near_ids = {id(e) for e in near[: max(0, n - len(chosen))]}
     chosen += near[: max(0, n - len(chosen))]
     lines = ["# Error analysis", ""]
-    if flag("TEXT") or flag("URL"):
-        lines += ["> **SYNTHETIC data:** examples below are generated text; the failure modes shown are artefacts of the generator, not real-world findings.", ""]
     lines += [f"{sum(not id(e) in near_ids for e in chosen)} real error(s) and {len(near_ids)} near miss(es) shown "
               f"(total errors available: {len(wrong)}).", ""]
     for k, e in enumerate(chosen, 1):
@@ -421,36 +418,31 @@ def run(with_bilstm_cv: bool = False) -> str:
     res["cv"] = cv
     paper_tbl, res["base_paper"] = base_paper_table(splits)
     deriv_tbl, res["base_paper_derivation"] = base_paper_derivation()
-    cases, aligned_synth = load_cases()
-    abl_rows, scores, y_al, abl_ci_rows = ablation(cases)
+    cases = load_cases()
+    abl_rows, scores, y_al, abl_ci_rows = ablation(cases) if cases else ([], {}, None, [])
     gen_tbl, res["generalisation"] = generalisation(an, splits, custom)
     tr_tbl, res["domain_transfer"] = transfer_section()
     rob_tbl, res["robustness"] = robustness_section()
     cal_tbl, res["calibration"] = calibration_section(splits)
     figs = make_figures(splits, scores, y_al, an)
-    aligned_df = pd.read_csv(next(iter([config.ALIGNED_DIR / config.ALIGNED_FILE] if (config.ALIGNED_DIR / config.ALIGNED_FILE).exists()
-                                      else [config.ALIGNED_DIR / f"{config.SYNTHETIC_PREFIX}aligned.csv"]))).fillna("")
-    err_md = error_analysis(an, splits, custom, cases, dict(zip(aligned_df["case_id"], aligned_df["text"])),
-                            scores["Meta-classifier (all three + cross-modal)"])
+    aligned_text: dict[int, str] = {}
+    if cases:
+        aligned_df = pd.read_csv(config.ALIGNED_DIR / config.ALIGNED_FILE).fillna("")
+        aligned_text = dict(zip(aligned_df["case_id"], aligned_df["text"]))
+    err_md = error_analysis(an, splits, custom, cases, aligned_text,
+                            scores.get("Meta-classifier (all three + cross-modal)"))
     (config.REPORTS_DIR / "error_analysis.md").write_text(err_md)
     res["ablation"] = [dict(zip(["config", "coverage", "precision", "recall", "f1", "pr_auc", "roc_auc"], r)) for r in abl_rows]
     (config.REPORTS_DIR / "evaluation.json").write_text(json.dumps(res, indent=2, default=str))
 
-    # The Indian set writes no flag file; its rows carry source=SYNTHETIC instead.
-    custom_synth = custom is not None and bool((custom["source"] == "SYNTHETIC").any())
-    syn = {"text": flag("TEXT"), "url": flag("URL"), "aligned": aligned_synth, "indian": custom_synth}
     ocr = (config.REPORTS_DIR / "ocr_compare.md")
+    no_aligned = "_No aligned multimodal set yet: add `data/aligned/aligned.csv` and run `python -m ml.fusion.train_fuser`._"
     md = ["# TriGuard – results", ""]
-    if any(syn.values()):
-        md += ["> **WARNING – SYNTHETIC DATA.** Sections marked 🧪 were computed on generated stand-in data "
-               f"(text: {syn['text']}, Indian set: {syn['indian']}, URL: {syn['url']}, aligned set: {syn['aligned']}). Do not quote them as scientific results; "
-               "rerun `python -m reports.evaluate_all` after adding the real datasets (see PROGRESS.md → WAITING FOR USER).", ""]
-    tag = lambda s: " 🧪 SYNTHETIC" if s else ""
     cv_rows = [[k, *[v[m] for m in METRICS]] for k, v in cv.items()]
-    md += [f"## 1. 5-fold stratified cross-validation (mean ± std){tag(syn['text'] or syn['url'])}", "",
+    md += ["## 1. 5-fold stratified cross-validation (mean ± std)", "",
            md_table(["Model", *METRICS], cv_rows), "",
            "Thresholds and Platt calibration are fitted inside each fold on a 15% validation split; vectorizers/tokenizers fit on the training part only.", "",
-           f"## 2. Comparison with the base paper (EMSCAD test split){tag(syn['text'])}", "", paper_tbl, "",
+           "## 2. Comparison with the base paper (EMSCAD test split)", "", paper_tbl, "",
            "★ = the model this project is benchmarked against. † the paper publishes no "
            "probability-based AUROC; its AUROC column is reconciled in section 2b below, and for our "
            "models both forms are shown so like is compared with like. `text_bilstm` reads text only; the "
@@ -460,35 +452,35 @@ def run(with_bilstm_cv: bool = False) -> str:
            "Computed by `ml/common/base_paper.py` from the figures in the paper's Tables 2–3 and "
            "Figures 5–6, and covered by `tests/test_base_paper.py` — the derivation can be re-run, "
            "not just read.", "",
-           f"## 3. Ablation on the aligned multimodal set (out-of-fold, n={len(cases)}){tag(syn['aligned'])}", "",
-           md_table(["Configuration", "Coverage", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC"], abl_rows), "",
-           "Coverage = share of cases where the configuration has at least one input. Thresholds are tuned on each fold's training part. ![PR curves](figures/pr_ablation.png)", "",
-           f"## 4. Generalisation: EMSCAD-trained text model → Indian set{tag(syn['text'] or syn['indian'])}", "", gen_tbl, "",
+           f"## 3. Ablation on the aligned multimodal set (out-of-fold, n={len(cases)})", "",
+           (md_table(["Configuration", "Coverage", "Precision", "Recall", "F1", "PR-AUC", "ROC-AUC"], abl_rows) + "\n\n"
+            "Coverage = share of cases where the configuration has at least one input. Thresholds are tuned on each fold's training part. ![PR curves](figures/pr_ablation.png)"
+            if cases else no_aligned), "",
+           "## 4. Generalisation: EMSCAD-trained text model → Indian set", "", gen_tbl, "",
            "Threshold fixed from EMSCAD validation; a gap between ROC/PR-AUC (ranking) and F1 (threshold) indicates calibration shift rather than lost signal.", "",
-           f"### 4b. Fixing the transfer: prior correction + target recalibration{tag(syn['text'] or syn['indian'])}", "", tr_tbl, "",
+           "### 4b. Fixing the transfer: prior correction + target recalibration", "", tr_tbl, "",
            "`naive` carries the EMSCAD threshold over unchanged — the MCC of ~0 means the model labels *every* "
            "target row as scam, so ranking is perfect but the decision is worthless. `adapted` shifts the logit by "
            "the prior log-odds difference and re-fits Platt scaling on half the target rows, then scores the other "
            "half. See `ml/common/prior_shift.py`.", ""]
     md += ["## 5. OCR comparison (character error rate)", "",
-           "> **Do not quote the backend ranking from this table.** The images are rendered from fonts, so OCR "
-           "reads back the exact glyphs that were drawn; real offer letters arrive as recompressed phone photos "
-           "with skew and glare, where CER is typically 10-30x worse and the EasyOCR/Tesseract ordering commonly "
-           "inverts. Re-run on real annotated images before drawing any conclusion.", "", ocr.read_text().split("\n", 2)[2] if ocr.exists() else "_run `python -m ml.image.compare_ocr`_", "",
-           f"## 6. Calibration (ECE){tag(syn['text'] or syn['url'])}", "", cal_tbl, "",
-           "![text](figures/reliability_text.png) ![url](figures/reliability_url.png) ![fusion](figures/reliability_fusion_meta.png)", "",
+           ocr.read_text().split("\n", 2)[2] if ocr.exists()
+           else "_No OCR ground truth yet: add real images listed in `data/images/ocr_gt.csv` (path,text) and run `python -m ml.image.compare_ocr`._", "",
+           "## 6. Calibration (ECE)", "", cal_tbl, "",
+           "![text](figures/reliability_text.png) ![url](figures/reliability_url.png)"
+           + (" ![fusion](figures/reliability_fusion_meta.png)" if (FIG / "reliability_fusion_meta.png").exists() else ""), "",
            "## 7. Confusion matrices & PR curves", "", " ".join(f"![{f}](figures/{f})" for f in figs if f.startswith(("cm_", "pr_"))), "",
            "## 8. Error analysis", "", "See [error_analysis.md](error_analysis.md) (10 examples).", "",
-           f"## 9. Adversarial robustness{tag(syn['text'] or syn['indian'])}", "", rob_tbl,
+           "## 9. Adversarial robustness", "", rob_tbl,
            "Scam rows only are rewritten by label-preserving obfuscations (spacing, homoglyphs, contact "
            "obfuscation, spelled-out amounts, euphemisms). `rule_recall` isolates the regex layer: where it "
            "collapses, keyword matching alone would have missed the scam. Full table: "
            "[robustness.md](robustness.md).", "",
-           f"## 10. Ablation with 95% bootstrap confidence intervals{tag(syn['aligned'])}", "",
-           md_table(["Configuration", *CI_METRICS], abl_ci_rows), "",
-           f"Stratified percentile bootstrap, {config.BOOTSTRAP_SAMPLES} resamples. With n={len(cases)} "
-           "the intervals are wide enough that most configurations in section 3 are not separable; quote "
-           "intervals, not point estimates.", ""]
+           "## 10. Ablation with 95% bootstrap confidence intervals", "",
+           (md_table(["Configuration", *CI_METRICS], abl_ci_rows) + "\n\n"
+            f"Stratified percentile bootstrap, {config.BOOTSTRAP_SAMPLES} resamples. With n={len(cases)} "
+            "the intervals are wide enough that most configurations in section 3 are not separable; quote "
+            "intervals, not point estimates." if cases else no_aligned), ""]
     out = "\n".join(md)
     (config.REPORTS_DIR / "RESULTS.md").write_text(out)
     return out

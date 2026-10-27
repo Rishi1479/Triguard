@@ -36,7 +36,7 @@ def run(models_dir: Path = config.MODELS_DIR, reports_dir: Path = config.REPORTS
     folder = models_dir / "url_lgbm"
     folder.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": clf, "calibrator": cal, "threshold": thr, "features": FEATURE_NAMES}, folder / "model.joblib")
-    out = {"synthetic": (config.PROCESSED_DIR / "SYNTHETIC_URL.flag").exists(), "threshold": thr,
+    out = {"threshold": thr,
            "best_iteration": int(clf.best_iteration_ or clf.n_estimators), "test": test,
            "top_features": sorted(zip(FEATURE_NAMES, map(int, clf.feature_importances_)), key=lambda t: -t[1])[:10]}
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -48,4 +48,4 @@ if __name__ == "__main__":
     r = run()
     t = r["test"]
     print(f"URL LightGBM test: F1={t['f1']:.3f} recall={t['recall']:.3f} PR-AUC={t['pr_auc']:.3f} "
-          f"ROC-AUC={t['roc_auc']:.3f} MCC={t['mcc']:.3f} (synthetic={r['synthetic']})")
+          f"ROC-AUC={t['roc_auc']:.3f} MCC={t['mcc']:.3f}")

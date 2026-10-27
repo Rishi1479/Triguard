@@ -29,12 +29,8 @@ def fmt(m: dict) -> str:
 def run() -> str:
     """Write reports/text_results.md and return its text."""
     an = TextAnalyzer()
-    synth = (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()
     base = json.loads((config.REPORTS_DIR / "text_baselines.json").read_text())
     lines = ["# Text module results", ""]
-    if synth:
-        lines += ["> **WARNING: SYNTHETIC DATA.** These numbers come from generated postings, not EMSCAD. "
-                  "They only prove the pipeline runs; do not quote them as results.", ""]
     lines += [f"Analyzer model in use: `{an.model_name}` (threshold {an.threshold:.3f}, tuned on validation).", "",
               "| Set | Variant | " + " | ".join(COLS) + " | ECE |", "|---|---|" + "---|" * (len(COLS) + 1)]
     for name, path in (("EMSCAD test", "text_test.csv"), ("Indian custom", "custom_text_test.csv")):
@@ -42,8 +38,6 @@ def run() -> str:
         if not f.exists():
             continue
         df = pd.read_csv(f)
-        if "source" in df.columns and (df["source"] == "SYNTHETIC").any():
-            name += " (SYNTHETIC)"
         for variant, rules in (("model only", False), ("model + rule boost", True)):
             lines.append(f"| {name} | {variant} | {fmt(score_set(an, df, rules)[1])} |")
     lines += ["", "## Baselines (from reports/text_baselines.json, EMSCAD test)", "",

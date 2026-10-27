@@ -55,9 +55,11 @@ def test_anonymize(raw, expected):
 def test_prepare_emscad_pipeline(tmp_path, monkeypatch):
     for attr in ("RAW_DIR", "PROCESSED_DIR"):
         monkeypatch.setattr(config, attr, tmp_path / attr)
+    config.RAW_DIR.mkdir()
+    make_emscad_like().to_csv(config.RAW_DIR / config.EMSCAD_FILES[0], index=False)
     splits = prepare_emscad.run()
     assert (tmp_path / "PROCESSED_DIR" / "text_train.csv").exists()
-    assert (tmp_path / "RAW_DIR" / "SYNTHETIC_fake_job_postings.csv").exists()
+    assert not list(config.RAW_DIR.glob("SYNTHETIC_*"))
     texts = [set(s.text) for s in splits.values()]
     assert not (texts[0] & texts[1]) and not (texts[0] & texts[2])
     assert all(0 < s.label.mean() < 0.3 for s in splits.values())

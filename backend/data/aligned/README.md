@@ -13,4 +13,4 @@ One row per real-world case, where text, image and URL describe the SAME posting
 
 Any of text / image_path / url may be blank, but at least one must be present. Save your
 real file as `data/aligned/aligned.csv`; the fuser trains its meta-classifier on it and the
-ablation study uses it. Files starting with `SYNTHETIC_` are generated test data only.
+ablation study uses it. Until it exists, the app fuses with a fixed weighted average.

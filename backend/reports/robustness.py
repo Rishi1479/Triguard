@@ -71,7 +71,6 @@ def evaluate_attack(an: TextAnalyzer, df: pd.DataFrame, name: str | None,
 def run() -> str:
     """Write reports/robustness.md (and robustness.json) and return the markdown."""
     an = TextAnalyzer()
-    synth = (config.PROCESSED_DIR / "SYNTHETIC_TEXT.flag").exists()
     frames: dict[str, pd.DataFrame] = {}
     for label, fname in (("EMSCAD test", "text_test.csv"), ("Indian custom", "custom_text_test.csv")):
         path = config.PROCESSED_DIR / fname
@@ -81,15 +80,13 @@ def run() -> str:
                 frames[label] = df
 
     lines = ["# Adversarial robustness (text)", ""]
-    if synth:
-        lines += ["> **WARNING: SYNTHETIC DATA.** Re-run after adding the real datasets.", ""]
     lines += [
         "Scam rows are rewritten by label-preserving obfuscations (the kind real scammers use to",
         "dodge keyword filters); genuine rows are untouched. `rule_recall` is the share of scam rows",
         "where at least one red flag still fires, so it isolates the regex layer from the model.", "",
     ]
 
-    payload: dict = {"synthetic": synth, "model": an.model_name, "sets": {}}
+    payload: dict = {"model": an.model_name, "sets": {}}
     for label, df in frames.items():
         base = evaluate_attack(an, df, None)
         rows = [base["row"]]

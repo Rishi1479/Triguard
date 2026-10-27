@@ -7,10 +7,8 @@ import pandas as pd
 
 from ml.common import config
 from ml.common.privacy import anonymize
-from ml.common.synthetic import make_custom_indian
 from ml.common.textprep import class_balance, clean_text, dedupe
 
-log = logging.getLogger(__name__)
 __all__ = ["anonymize", "write_template", "run"]
 
 TEMPLATE_ROWS = [
@@ -30,16 +28,12 @@ def write_template() -> None:
 
 
 def run() -> pd.DataFrame:
-    """Load, clean, anonymise, dedupe -> data/processed/custom_text_test.csv."""
+    """Load, clean, anonymise, dedupe -> data/processed/custom_text_test.csv. Raises if the raw file is missing."""
     write_template()
     real = config.RAW_DIR / config.CUSTOM_TEXT_FILE
-    if real.exists():
-        df = pd.read_csv(real)
-    else:
-        synth = config.RAW_DIR / (config.SYNTHETIC_PREFIX + config.CUSTOM_TEXT_FILE)
-        log.warning("SYNTHETIC: %s missing; generating %s", real.name, synth.name)
-        df = make_custom_indian()
-        df.to_csv(synth, index=False)
+    if not real.exists():
+        raise FileNotFoundError(f"{real} not found; fill it in using custom_text_template.csv (text,label,source)")
+    df = pd.read_csv(real)
     df = df.assign(text=df["text"].map(clean_text).map(anonymize), label=df["label"].astype(int))
     df = dedupe(df[df["text"].str.len() >= config.MIN_TEXT_CHARS]).reset_index(drop=True)
     config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
